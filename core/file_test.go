@@ -1,13 +1,18 @@
 package core
 
 import (
-	"github.com/injoyai/goutil/oss"
+	"os"
 	"testing"
 )
 
 func TestFile_Del(t *testing.T) {
-	oss.New("./testdata/test.txt",
-		`1hhhhh
+
+	file, err := os.Create("./testdata/test.txt")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	file.WriteString(`1hhhhh
 小米
 删除这行
 小明
@@ -15,6 +20,7 @@ func TestFile_Del(t *testing.T) {
 可口可乐
 娃哈哈
 `)
+	file.Close()
 
 	f := File{
 		Filename: "./testdata/test.txt",
@@ -25,7 +31,7 @@ func TestFile_Del(t *testing.T) {
 		return
 	}
 
-	err := f.Insert(4, []byte("我是第5行"))
+	err = f.Insert(4, []byte("我是第5行"))
 	if err != nil {
 		t.Error(err)
 		return

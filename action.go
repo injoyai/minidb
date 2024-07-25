@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
-	"github.com/injoyai/logs"
 	"github.com/injoyai/minidb/core"
 	"os"
 	"strings"
@@ -311,7 +310,6 @@ func (this *Action) withRead(fn func(f *os.File) error) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
-			logs.Debug(filename)
 			return errors.New("表不存在: " + this.TableName)
 		}
 		return err
