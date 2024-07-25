@@ -71,12 +71,14 @@ func TestDel(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	db := New("./database", "test")
+	db := New("./database", "test",
+		WithTag("orm"),
+	)
 	t.Log("Update")
 	err := db.Where("time=1721890686324003000").Cols("id,name,age").Update(&Person{
 		ID:   666,
-		Name: "小白3",
-		Age:  21,
+		Name: "小白4",
+		Age:  22,
 	})
 	if err != nil {
 		t.Error(err)
@@ -85,9 +87,9 @@ func TestUpdate(t *testing.T) {
 }
 
 type Person struct {
-	ID   int     `json:"time"`
-	Name string  `json:"name"`
-	Age  int     `json:"age"`
-	High float64 `json:"high"`
-	Boy  bool    `json:"boy"`
+	ID   int     `orm:"time"`
+	Name string  `orm:"name"`
+	Age  int     `orm:"age"`
+	High float64 `orm:"high"`
+	Boy  bool    `orm:"boy"`
 }

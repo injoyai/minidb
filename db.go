@@ -40,7 +40,7 @@ func New(dir, database string, option ...Option) *DB {
 		Dir:      dir,
 		Database: database,
 		Split:    []byte{' ', 0xFF, ' '},
-		tag:      "json",
+		tag:      "orm",
 		id:       "time",
 	}
 	for _, op := range option {
@@ -187,6 +187,10 @@ func (this *DB) FindAndCount(i interface{}) (int64, error) {
 
 
  */
+
+func (this *DB) unmarshal(i interface{}, ptr interface{}) error {
+	return conv.Unmarshal(i, ptr, conv.UnmarshalParam{Tags: []string{this.tag}})
+}
 
 func (this *DB) typeString(Type reflect.Kind) string {
 	switch Type {

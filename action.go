@@ -109,7 +109,7 @@ func (this *Action) Get(i interface{}) (bool, error) {
 	if len(this.Result) == 0 {
 		return false, nil
 	}
-	err := conv.Unmarshal(this.Result, i)
+	err := this.db.unmarshal(this.Result, i)
 	return true, err
 }
 
@@ -120,7 +120,7 @@ func (this *Action) Find(i interface{}) error {
 	if err := this.find(); err != nil {
 		return err
 	}
-	return conv.Unmarshal(this.Result, i)
+	return this.db.unmarshal(this.Result, i)
 }
 
 func (this *Action) Count(i ...interface{}) (int64, error) {
@@ -146,7 +146,7 @@ func (this *Action) FindAndCount(i interface{}) (int64, error) {
 		return 0, err
 	}
 	//解析到用户的对象
-	return co, conv.Unmarshal(this.Result, i)
+	return co, this.db.unmarshal(this.Result, i)
 }
 
 // Insert 插入到数据库
@@ -160,7 +160,7 @@ func (this *Action) Insert(i ...interface{}) error {
 	for _, v := range i {
 		for _, vv := range conv.Interfaces(v) {
 			m := make(map[string]interface{})
-			if err := conv.Unmarshal(vv, &m); err != nil {
+			if err := this.db.unmarshal(vv, &m); err != nil {
 				return err
 			}
 			maps = append(maps, m)
@@ -185,7 +185,7 @@ func (this *Action) Update(i interface{}) error {
 
 	//解析数据到map中
 	update := make(map[string]interface{})
-	if err := conv.Unmarshal(i, &update); err != nil {
+	if err := this.db.unmarshal(i, &update); err != nil {
 		return err
 	}
 
