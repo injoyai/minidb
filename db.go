@@ -44,7 +44,6 @@ type DB struct {
 	id       string
 	lastID   int64
 	mu       sync.Mutex
-	table    *Table //表信息
 }
 
 // Sync 同步表信息到数据库

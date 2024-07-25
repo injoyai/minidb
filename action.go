@@ -25,15 +25,14 @@ Action
 type Action struct {
 	db *DB
 
-	Decode       bool
-	Handler      []func(field map[string]*Field) (mate bool)
-	LimitHandler func(index int, field map[string]string) (done bool)
-	Result       []interface{}
-	Err          error
+	Handler      []func(field map[string]*Field) (mate bool)          //筛选添加,例where and 暂未实现 or
+	LimitHandler func(index int, field map[string]string) (done bool) //对应操作Limit
+	Result       []interface{}                                        //对应Find和FindAndCount的数据缓存
+	Err          error                                                //操作的错误信息
 
-	TableName string
+	TableName string     //要操作的表名
 	scanner   *core.File //文件操作
-	table     *Table
+	table     *Table     //要操作的表信息
 }
 
 func (this *Action) Table(table interface{}) *Action {
@@ -264,6 +263,10 @@ func (this *Action) Delete(i ...any) (err error) {
 
 // setTable 解析表名
 func (this *Action) setTable(i ...interface{}) error {
+	if this.Err != nil {
+		return this.Err
+	}
+
 	if len(i) == 0 {
 		return nil
 	}
