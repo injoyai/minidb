@@ -63,12 +63,3 @@ func (this *Scanner) Limit(size int, offset int, search func(i int, bs []byte) (
 
 	return result, nil
 }
-
-//func (this *File) Append(p []byte) error {
-//	//移动至文本末尾
-//	if _, err := this.File.Seek(0, 2); err != nil {
-//		return err
-//	}
-//	_, err := this.File.Write(p)
-//	return err
-//}
