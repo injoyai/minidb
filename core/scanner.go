@@ -6,21 +6,6 @@ import (
 	"os"
 )
 
-// OpenRead 只读
-func OpenRead(filename string) (*os.File, error) {
-	return os.Open(filename)
-}
-
-// OpenAppend 追加
-func OpenAppend(filename string) (*os.File, error) {
-	return os.OpenFile(filename, os.O_APPEND, 0o666)
-}
-
-// OpenTemp 创建临时文件,新建或者清空数据
-func OpenTemp(filename string) (*os.File, error) {
-	return os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o666)
-}
-
 func NewScanner(f *os.File) *Scanner {
 	return &Scanner{
 		Scanner: bufio.NewScanner(f),
