@@ -17,7 +17,7 @@ func TestFile_Del(t *testing.T) {
 `)
 
 	f := File{
-		filename: "./testdata/test.txt",
+		Filename: "./testdata/test.txt",
 	}
 
 	if err := f.Del(2); err != nil {

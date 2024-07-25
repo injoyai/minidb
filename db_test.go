@@ -6,11 +6,14 @@ import (
 
 func TestNew(t *testing.T) {
 	db := New("./database", "test")
+
+	t.Log("Sync")
 	if err := db.Sync(new(Person)); err != nil {
 		t.Error(err)
 		return
 	}
 
+	t.Log("Insert")
 	if err := db.Insert(&Person{
 		Name: "小米",
 		Age:  18,
@@ -36,8 +39,16 @@ func TestNew(t *testing.T) {
 		return
 	}
 
+	t.Log("Delete")
+	err := db.Where("time=0").Delete(new(Person))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	t.Log("FindAndCount")
 	list := []*Person(nil)
-	co, err := db.FindAndCount(&list)
+	co, err := db.Where("name=? and age>=?", "小米", 18).FindAndCount(&list)
 	if err != nil {
 		t.Error(err)
 		return
@@ -47,6 +58,30 @@ func TestNew(t *testing.T) {
 		t.Logf("%#v", v)
 	}
 
+}
+
+func TestDel(t *testing.T) {
+	db := New("./database", "test")
+	t.Log("Delete")
+	err := db.Where("time<=1721890649352277600").Delete(new(Person))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	db := New("./database", "test")
+	t.Log("Update")
+	err := db.Where("time=1721890686324003000").Cols("id,name,age").Update(&Person{
+		ID:   666,
+		Name: "小白2",
+		Age:  27,
+	})
+	if err != nil {
+		t.Error(err)
+		return
+	}
 }
 
 type Person struct {

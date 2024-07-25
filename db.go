@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
+	"github.com/injoyai/logs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,6 +22,7 @@ func New(dir, database string) *DB {
 		Database: database,
 		Split:    []byte{' ', 0xFF, ' '},
 		tag:      "json",
+		id:       "time",
 	}
 }
 
@@ -39,8 +41,10 @@ type DB struct {
 	Database string
 	Split    []byte
 	tag      string
+	id       string
 	lastID   int64
 	mu       sync.Mutex
+	table    *Table //表信息
 }
 
 // Sync 同步表信息到数据库
@@ -54,8 +58,8 @@ func (this *DB) Sync(tables ...interface{}) error {
 
 		fields := Fields{
 			{
-				Name: "time",
-				Type: reflect.Int,
+				Name: this.id,
+				Type: Int,
 				Memo: "主键,时间戳",
 			},
 		}
@@ -80,7 +84,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 				fields = append(fields, &Field{
 					Index: i + 1,
 					Name:  field,
-					Type:  t.Field(i).Type.Kind(),
+					Type:  this.typeString(t.Field(i).Type.Kind()),
 				})
 			}
 
@@ -89,7 +93,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 				fields = append(fields, &Field{
 					Index: i + 1,
 					Name:  k.String(),
-					Type:  k.Kind(),
+					Type:  this.typeString(k.Kind()),
 				})
 			}
 
@@ -99,14 +103,16 @@ func (this *DB) Sync(tables ...interface{}) error {
 
 		filename := this.filename(tableName)
 		//生成表(文件)
-		f, err := os.OpenFile(filename, os.O_WRONLY, 0o666)
+		//判断文件是否存在,不存在则新建及初始化
+		_, err = os.Stat(filename)
 		if err != nil && !os.IsNotExist(err) {
 			return err
 		} else if err == nil {
 			//todo 后续加入同步字段
 			return nil
 		}
-		f, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o666)
+
+		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o666)
 		if err != nil {
 			return err
 		}
@@ -131,8 +137,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 
 // Where Where("Name=?","小明")
 func (this *DB) Where(s string, args ...interface{}) *Action {
-	NewAction(this).Where(s, args...)
-	return nil
+	return NewAction(this).Where(s, args...)
 }
 
 func (this *DB) Insert(i ...interface{}) error {
@@ -160,6 +165,22 @@ func (this *DB) FindAndCount(i interface{}) (int64, error) {
 
 
  */
+
+func (this *DB) typeString(Type reflect.Kind) string {
+	switch Type {
+	case reflect.Bool:
+		return Bool
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return Int
+	case reflect.Float64, reflect.Float32:
+		return Float
+	case reflect.String, reflect.Slice:
+		return String
+	default:
+		return String
+	}
+}
 
 func (this *DB) tableName(table interface{}) (string, error) {
 	switch val := table.(type) {
@@ -190,6 +211,7 @@ func (this *DB) filename(tableName string) string {
 	return filepath.Join(this.Dir, this.Database, tableName+".mini")
 }
 
+// getID 修改时间可能会有问题,主键变小了,后续改成记录最后的id,然后增加
 func (this *DB) getID() int64 {
 	this.mu.Lock()
 	defer this.mu.Unlock()
@@ -203,11 +225,70 @@ func (this *DB) getID() int64 {
 }
 
 type Field struct {
-	Index int          //实际下标
-	Name  string       //名称
-	Type  reflect.Kind //类型
-	Memo  string       //备注
-	Sort  int          //排序 序号
+	Index int    //实际下标
+	Name  string //名称
+	Type  string //类型
+	Memo  string //备注
+	Value string //值
+	Sort  int    //排序 序号
+}
+
+func (this *Field) compare(Type string, value interface{}) bool {
+	if this == nil {
+		return false
+	}
+	switch Type {
+	case "like", " like ":
+		return strings.Contains(this.Value, conv.String(value))
+	case "=":
+		switch this.Type {
+		case Int:
+			return conv.Int(this.Value) == conv.Int(value)
+		case Float:
+			return conv.Float64(this.Value) == conv.Float64(value)
+		default:
+			return this.Value == conv.String(value)
+		}
+	case ">":
+		switch this.Type {
+		case Int:
+			return conv.Int(this.Value) > conv.Int(value)
+		case Float:
+			return conv.Float64(this.Value) > conv.Float64(value)
+		default:
+			return this.Value > conv.String(value)
+		}
+	case ">=":
+		switch this.Type {
+		case Int:
+			return conv.Int(this.Value) >= conv.Int(value)
+		case Float:
+			return conv.Float64(this.Value) >= conv.Float64(value)
+		default:
+			return this.Value >= conv.String(value)
+		}
+	case "<":
+		switch this.Type {
+		case Int:
+			return conv.Int(this.Value) < conv.Int(value)
+		case Float:
+			return conv.Float64(this.Value) < conv.Float64(value)
+		default:
+			return this.Value < conv.String(value)
+		}
+	case "<=":
+		switch this.Type {
+		case Int:
+			return conv.Int(this.Value) <= conv.Int(value)
+		case Float:
+			return conv.Float64(this.Value) <= conv.Float64(value)
+		default:
+			return this.Value <= conv.String(value)
+		}
+	default:
+		logs.Err("未知的比较类型: ", Type)
+		return false
+	}
 }
 
 type Fields []*Field
@@ -218,7 +299,7 @@ func (this Fields) List() ([]string, []string, []string) {
 	lsMemo := []string(nil)
 	for _, f := range this {
 		lsName = append(lsName, f.Name)
-		lsType = append(lsType, conv.String(f.Type))
+		lsType = append(lsType, f.Type) // conv.String(f.Type)
 		lsMemo = append(lsMemo, f.Memo)
 	}
 	return lsName, lsType, lsMemo
@@ -240,13 +321,16 @@ func (this Fields) MapIndex() map[int]*Field {
 	return m
 }
 
-func (this *DB) DecodeTable(ls [12][]byte) (*Table, error) {
+func (this *DB) DecodeTable(ls [][]byte) (*Table, error) {
+	if len(ls) != 12 {
+		return nil, errors.New("无效文件")
+	}
 	t := new(Table)
 	for i, bs := range ls {
 		switch i {
 		case 0:
 			if string(bs) != "start" {
-				return nil, errors.New("文件格式不正确")
+				return nil, errors.New("文件格式不正确.start")
 			}
 		case 1, 2:
 			//预留,编码,等配置信息
@@ -256,7 +340,7 @@ func (this *DB) DecodeTable(ls [12][]byte) (*Table, error) {
 				t.Fields = append(t.Fields, &Field{
 					Index: index,
 					Name:  string(item),
-					Type:  0,
+					Type:  String,
 					Memo:  "",
 				})
 			}
@@ -264,7 +348,7 @@ func (this *DB) DecodeTable(ls [12][]byte) (*Table, error) {
 			//字段类型
 			for index, item := range bytes.Split(bs, this.Split) {
 				if index < len(t.Fields) {
-					t.Fields[index].Type = reflect.Kind(conv.Int(string(item)))
+					t.Fields[index].Type = string(item)
 				}
 			}
 		case 5:
@@ -285,7 +369,7 @@ func (this *DB) DecodeTable(ls [12][]byte) (*Table, error) {
 			//预留配置
 		case 11:
 			if string(bs) != "end" {
-				return nil, errors.New("文件格式不正确")
+				return nil, errors.New("文件格式不正确.end")
 			}
 		}
 	}
@@ -297,15 +381,59 @@ type Table struct {
 	Fields Fields //字段信息
 }
 
-func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int, field map[string]string) bool) {
+//func (this *Table) Bytes() []byte {
+//	f := bytes.NewBuffer(nil)
+//	f.Write([]byte("start\n")) //第1行起始标识
+//	f.Write([]byte("\n"))      //第2行预留
+//	f.Write([]byte("\n"))      //第3行预留
+//	f.Write([]byte(strings.Join(lsName, string(this.Split)) + "\n"))
+//	f.Write([]byte(strings.Join(lsType, string(this.Split)) + "\n"))
+//	f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.Split)) + "\n"))
+//	f.Write([]byte(strings.Join(lsMemo, string(this.Split)) + "\n"))
+//	f.Write([]byte("\n"))    //第8行预留
+//	f.Write([]byte("\n"))    //第9行预留
+//	f.Write([]byte("\n"))    //第10行预留
+//	f.Write([]byte("\n"))    //第11行预留
+//	f.Write([]byte("end\n")) //第12行结束标识
+//	return f.Bytes()
+//}
+
+func (this *Table) DecodeData2(data []byte, split []byte) map[string]*Field {
+	mFieldIndex := this.Fields.MapIndex()
+	//数据整理
+	mapField := make(map[string]*Field)
+	for i, bs := range bytes.Split(data, split) {
+		if field, ok := mFieldIndex[i]; ok {
+			//todo 根据类型转成对应的格式
+			mapField[field.Name] = &Field{
+				Index: field.Index,
+				Name:  field.Name,
+				Type:  field.Type,
+				Memo:  field.Memo,
+				Value: string(bs),
+				Sort:  field.Sort,
+			}
+		}
+	}
+	return mapField
+}
+
+func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int, field map[string]*Field) bool) {
 	mFieldIndex := this.Fields.MapIndex()
 	for index := 0; s.Scan(); index++ {
 		//数据整理
-		mapField := make(map[string]string)
+		mapField := make(map[string]*Field)
 		for i, bs := range bytes.Split(s.Bytes(), split) {
 			if field, ok := mFieldIndex[i]; ok {
 				//todo 根据类型转成对应的格式
-				mapField[field.Name] = string(bs)
+				mapField[field.Name] = &Field{
+					Index: field.Index,
+					Name:  field.Name,
+					Type:  field.Type,
+					Memo:  field.Memo,
+					Value: string(bs),
+					Sort:  field.Sort,
+				}
 			}
 		}
 		if !fn(index, mapField) {
@@ -314,7 +442,7 @@ func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int,
 	}
 }
 
-func (this *Table) DataBytes(field map[string]interface{}, split []byte) []byte {
+func (this *Table) EncodeData(field map[string]interface{}, split []byte) []byte {
 	mField := this.Fields.Map()
 	ls := make([][]byte, len(mField))
 	for k, v := range field {
@@ -323,6 +451,14 @@ func (this *Table) DataBytes(field map[string]interface{}, split []byte) []byte 
 		}
 	}
 	bs := bytes.Join(ls, split)
-	bs = append(bs, []byte("\n")...)
 	return bs
 }
+
+type ValueType string
+
+const (
+	String = "string"
+	Bool   = "bool"
+	Int    = "int"
+	Float  = "float"
+)

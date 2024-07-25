@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
+	"github.com/injoyai/logs"
+	"github.com/injoyai/minidb/core"
 	"os"
-	"reflect"
 	"strings"
 )
 
 func NewAction(db *DB) *Action {
-	return &Action{db: db}
+	return &Action{
+		db:      db,
+		scanner: core.NewFile("", 0),
+	}
 }
 
 /*
@@ -19,39 +23,50 @@ Action
 暂不支持or
 */
 type Action struct {
-	db           *DB
-	TableName    string
+	db *DB
+
 	Decode       bool
-	Handler      []func(field map[string]string) (next bool)
+	Handler      []func(field map[string]*Field) (mate bool)
 	LimitHandler func(index int, field map[string]string) (done bool)
 	Result       []interface{}
 	Err          error
+
+	TableName string
+	scanner   *core.File //文件操作
+	table     *Table
 }
 
 func (this *Action) Table(table interface{}) *Action {
-	switch val := table.(type) {
-	case nil:
-	case string:
-		this.TableName = val
-	case interface{ TableName() string }:
-		this.TableName = val.TableName()
-	default:
-		t := reflect.TypeOf(table)
-		this.TableName = t.Name()
-	}
+	this.setTable(table)
 	return this
 }
 
 func (this *Action) Where(s string, args ...interface{}) *Action {
-	s = strings.ReplaceAll(s, "?", "%s")
-	s = fmt.Sprintf(s, args...)
+	offset := 0
+	for _, v := range strings.Split(s, " and ") {
+		typeList := []string{" like ", ">=", ">", "<=", "<", "="}
+		for _, Type := range typeList {
+			if ls := strings.SplitN(v, Type, 2); len(ls) == 2 {
+				key := strings.TrimSpace(ls[0])
+				value := strings.TrimSpace(ls[1])
+				if value == "?" {
+					if len(args) > offset {
+						value = conv.String(args[offset])
+						offset++
+					} else {
+						this.Err = fmt.Errorf("缺少参数(%s)", v)
+						return this
+					}
+				}
+				this.Handler = append(this.Handler, func(field map[string]*Field) bool {
+					val, ok := field[key]
+					return ok && val.compare(Type, value)
+				})
+				break
+			}
+		}
 
-	strings.Split(s, " and ")
-
-	//分割and
-	//然后分割=
-	//然后生成函数
-
+	}
 	return this
 }
 
@@ -66,7 +81,7 @@ func (this *Action) Cols(cols ...string) *Action {
 			m[v] = true
 		}
 	}
-	this.Handler = append(this.Handler, func(field map[string]string) (next bool) {
+	this.Handler = append(this.Handler, func(field map[string]*Field) (next bool) {
 		for k, _ := range field {
 			if !m[k] {
 				delete(field, k)
@@ -89,6 +104,9 @@ func (this *Action) Limit(size int, offset ...int) *Action {
 }
 
 func (this *Action) Get(i interface{}) (bool, error) {
+	if err := this.setTable(i); err != nil {
+		return false, err
+	}
 	this.Limit(1)
 	if len(this.Result) == 0 {
 		return false, nil
@@ -107,31 +125,39 @@ func (this *Action) Find(i interface{}) error {
 	return conv.Unmarshal(this.Result, i)
 }
 
-func (this *Action) Count() (int64, error) {
+func (this *Action) Count(i ...interface{}) (int64, error) {
+	if err := this.setTable(i...); err != nil {
+		return 0, err
+	}
 	return this.count()
 }
 
 func (this *Action) FindAndCount(i interface{}) (int64, error) {
+	//设置表名,数据来源
 	if err := this.setTable(i); err != nil {
 		return 0, err
 	}
+
+	//统计数量
 	co, err := this.count()
 	if err != nil {
 		return 0, err
 	}
+	//查找数据
 	if err = this.find(); err != nil {
 		return 0, err
 	}
+	//解析到用户的对象
 	return co, conv.Unmarshal(this.Result, i)
 }
 
 // Insert 插入到数据库
 func (this *Action) Insert(i ...interface{}) error {
-	for index := 0; index < len(i) && len(this.TableName) == 0; index++ {
-		if err := this.setTable(i[index]); err != nil {
-			return err
-		}
+	//获取表名称
+	if err := this.setTable(i); err != nil {
+		return err
 	}
+	//整理字段结构
 	maps := []map[string]interface{}(nil)
 	for _, v := range i {
 		for _, vv := range conv.Interfaces(v) {
@@ -148,14 +174,86 @@ func (this *Action) Insert(i ...interface{}) error {
 	return this.withAppend(maps...)
 }
 
-func (this *Action) Delete() error {
-	//this.Cols("ID")
-	//result := make([]map[string]string, len(this.Result))
-	//for _, v := range this.Result {
-	//
-	//}
+func (this *Action) Update(i interface{}) error {
+	//获取表名称
+	if err := this.setTable(i); err != nil {
+		return err
+	}
+
+	//校验是否忘记增加删除的条件
+	if len(this.Handler) == 0 && this.LimitHandler == nil {
+		return errors.New("修改是否忘记增加条件")
+	}
+
+	//解析数据到map中
+	update := make(map[string]interface{})
+	if err := conv.Unmarshal(i, &update); err != nil {
+		return err
+	}
+
+	this.scanner.Update(func(i int, bs []byte) ([][]byte, error) {
+
+		flied := this.table.DecodeData2(bs, this.db.Split)
+		original := make(map[string]string)
+		for k, v := range flied {
+			original[k] = v.Value
+		}
+		for _, fn := range this.Handler {
+			if !fn(flied) {
+				//不符合的数据原路返回
+				return [][]byte{bs}, nil
+			}
+		}
+
+		if this.LimitHandler != nil {
+			if this.LimitHandler(i, original) {
+				//不符合的数据原路返回
+				return [][]byte{bs}, nil
+			}
+		}
+
+		m := make(map[string]interface{})
+		for k, v := range original {
+			m[k] = v
+		}
+		for k, v := range update {
+			//主键不能修改
+			if k != this.db.id {
+				if _, ok := flied[k]; ok {
+					m[k] = v
+				}
+			}
+		}
+
+		result := this.table.EncodeData(m, this.db.Split)
+
+		return [][]byte{result}, nil
+	})
 
 	return nil
+}
+
+func (this *Action) Delete(i ...any) (err error) {
+	//获取表名称
+	if err := this.setTable(i); err != nil {
+		return err
+	}
+
+	//校验是否忘记增加删除的条件
+	if len(this.Handler) == 0 && this.LimitHandler == nil {
+		return errors.New("删除是否忘记增加条件")
+	}
+
+	return this.scanner.DelBy(func(i int, bs []byte) (bool, error) {
+		del := true
+		flied := this.table.DecodeData2(bs, this.db.Split)
+		for _, fn := range this.Handler {
+			if !fn(flied) {
+				del = false
+			}
+		}
+		return del, nil
+	})
 }
 
 /*
@@ -164,39 +262,45 @@ func (this *Action) Delete() error {
 
  */
 
-func (this *Action) setTable(i interface{}) error {
-	tableName, err := this.db.tableName(i)
+// setTable 解析表名
+func (this *Action) setTable(i ...interface{}) error {
+	if len(i) == 0 {
+		return nil
+	}
+
+	table := i[0]
+	ls := conv.Interfaces(table)
+	if len(ls) > 0 {
+		table = ls[0]
+	}
+
+	tableName, err := this.db.tableName(table)
 	if err != nil {
 		return err
 	}
+
 	this.TableName = tableName
+	this.scanner.Filename = this.db.filename(this.TableName)
+	this.scanner.OnOpen(func(s *core.Scanner) ([][]byte, error) {
+		ls, err := s.LimitBytes(12)
+		if err != nil {
+			return nil, err
+		}
+		this.table, err = this.db.DecodeTable(ls)
+		return ls, err
+	})
 	return nil
 }
 
-func (this *Action) withAppend(fields ...map[string]interface{}) error {
-	filename := this.db.filename(this.TableName)
-	f, err := os.OpenFile(filename, os.O_APPEND, 0o666)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.New("表不存在")
+func (this *Action) withAppend(fields ...map[string]interface{}) (err error) {
+	return this.scanner.AppendWith(func(s *core.Scanner) ([][]byte, error) {
+		ls := [][]byte(nil)
+		for _, field := range fields {
+			field["time"] = this.db.getID() //自增主键
+			ls = append(ls, this.table.EncodeData(field, this.db.Split))
 		}
-		return err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	table, err := this.getTable(scanner)
-	if err != nil {
-		return err
-	}
-
-	for _, field := range fields {
-		field[table.Fields[0].Name] = []byte(conv.String(this.db.getID()))
-		if _, err = f.Write(table.DataBytes(field, this.db.Split)); err != nil {
-			return err
-		}
-	}
-	return nil
+		return ls, nil
+	})
 }
 
 func (this *Action) withRead(fn func(f *os.File) error) error {
@@ -204,7 +308,8 @@ func (this *Action) withRead(fn func(f *os.File) error) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return errors.New("表不存在")
+			logs.Debug(filename)
+			return errors.New("表不存在: " + this.TableName)
 		}
 		return err
 	}
@@ -215,26 +320,15 @@ func (this *Action) withRead(fn func(f *os.File) error) error {
 	return nil
 }
 
-func (this *Action) getTable(scanner *bufio.Scanner) (*Table, error) {
-	infoList := [12][]byte{}
-	for i := 0; i < 12; i++ {
-		if !scanner.Scan() {
-			break
-		}
-		infoList[i] = scanner.Bytes()
-	}
-	return this.db.DecodeTable(infoList)
-}
-
 func (this *Action) withData(scanner *bufio.Scanner, fn func(t *Table, s *bufio.Scanner) error) error {
 	infoList := [12][]byte{}
 	for i := 0; i < 12; i++ {
 		if !scanner.Scan() {
 			break
 		}
-		infoList[i] = scanner.Bytes()
+		infoList[i] = []byte(scanner.Text())
 	}
-	table, err := this.db.DecodeTable(infoList)
+	table, err := this.db.DecodeTable(infoList[:])
 	if err != nil {
 		return err
 	}
@@ -244,11 +338,11 @@ func (this *Action) withData(scanner *bufio.Scanner, fn func(t *Table, s *bufio.
 func (this *Action) find() error {
 	return this.withRead(func(f *os.File) error {
 		return this.withData(bufio.NewScanner(f), func(t *Table, scanner *bufio.Scanner) error {
-			t.DecodeData(scanner, this.db.Split, func(index int, field map[string]string) bool {
+			t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) bool {
 				//数据筛选
 				for _, fn := range this.Handler {
 					if !fn(field) {
-						break
+						return true
 					}
 				}
 				//数据分页
@@ -258,7 +352,12 @@ func (this *Action) find() error {
 						return false
 					}
 				}
-				if this.LimitHandler(index, field) {
+				m := make(map[string]string)
+				for k, v := range field {
+					m[k] = v.Value
+				}
+
+				if this.LimitHandler(index, m) {
 					return false
 				}
 
