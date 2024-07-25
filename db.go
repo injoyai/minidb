@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
-	"github.com/injoyai/logs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,15 +14,39 @@ import (
 	"time"
 )
 
-func New(dir, database string) *DB {
+func WithTag(tag string) Option {
+	return func(db *DB) {
+		db.tag = tag
+	}
+}
+
+func WithID(id string) Option {
+	return func(db *DB) {
+		db.id = id
+	}
+}
+
+func WithSplit(split []byte) Option {
+	return func(db *DB) {
+		db.Split = split
+	}
+}
+
+type Option func(db *DB)
+
+func New(dir, database string, option ...Option) *DB {
 	os.MkdirAll(filepath.Join(dir, database), os.ModePerm)
-	return &DB{
+	db := &DB{
 		Dir:      dir,
 		Database: database,
 		Split:    []byte{' ', 0xFF, ' '},
 		tag:      "json",
 		id:       "time",
 	}
+	for _, op := range option {
+		op(db)
+	}
+	return db
 }
 
 /*
@@ -285,7 +308,6 @@ func (this *Field) compare(Type string, value interface{}) bool {
 			return this.Value <= conv.String(value)
 		}
 	default:
-		logs.Err("未知的比较类型: ", Type)
 		return false
 	}
 }
