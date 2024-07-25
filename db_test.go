@@ -75,8 +75,8 @@ func TestUpdate(t *testing.T) {
 	t.Log("Update")
 	err := db.Where("time=1721890686324003000").Cols("id,name,age").Update(&Person{
 		ID:   666,
-		Name: "小白2",
-		Age:  27,
+		Name: "小白3",
+		Age:  21,
 	})
 	if err != nil {
 		t.Error(err)

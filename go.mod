@@ -1,6 +1,6 @@
 module github.com/injoyai/minidb
 
-go 1.20
+go 1.18
 
 require github.com/injoyai/conv v1.1.8
 
