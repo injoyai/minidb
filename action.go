@@ -72,12 +72,22 @@ func (this *Action) And(s string, args ...interface{}) *Action {
 	return this.Where(s, args...)
 }
 
+func (this *Action) Like(filed, like string) *Action {
+	return this.Where(fmt.Sprintf("%s like %s", filed, like))
+}
+
 func (this *Action) Cols(cols ...string) *Action {
 	m := make(map[string]bool)
 	for _, s := range cols {
 		for _, v := range strings.Split(s, ",") {
-			m[v] = true
+			if len(v) > 0 {
+				m[v] = true
+			}
 		}
+	}
+	//当调用了Cols而未设置值是,视为无效
+	if len(m) == 0 {
+		return this
 	}
 	this.Handler = append(this.Handler, func(field map[string]*Field) (next bool) {
 		for k, _ := range field {
@@ -95,8 +105,11 @@ func (this *Action) Limit(size int, offset ...int) *Action {
 		if len(offset) > 0 && index < offset[0] {
 			return false
 		}
+		if size == 0 {
+			return true
+		}
 		this.Result = append(this.Result, field)
-		return len(this.Result) >= size
+		return len(this.Result) >= size && size > 0
 	}
 	return this
 }
