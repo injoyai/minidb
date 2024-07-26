@@ -124,6 +124,27 @@ func TestSplit(t *testing.T) {
 	}
 }
 
+// TestInsert 测试插入数据库后,主键是否被赋值
+func TestInsert(t *testing.T) {
+	db := New("./database", "testinsert")
+	db.Sync(new(Person))
+	p := &Person{
+		ID:   0,
+		Name: "小黑",
+		Age:  11,
+		High: 132.1,
+		Boy:  false,
+	}
+	t.Log(db.Insert(p))
+	t.Log(*p)
+}
+
+func TestErr(t *testing.T) {
+	db := New("./database", "testerr")
+	t.Log(db.Insert(nil))
+	t.Log(db.Insert(new(Person)))
+}
+
 type Person struct {
 	ID   int     `orm:"time"`
 	Name string  `orm:"name"`

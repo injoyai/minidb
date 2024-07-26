@@ -114,7 +114,8 @@ func (this *Action) Limit(size int, offset ...int) *Action {
 	return this
 }
 
-func (this *Action) Get(i interface{}) (bool, error) {
+func (this *Action) Get(i interface{}) (has bool, err error) {
+	defer this.dealErr(&err)
 	if err := this.setTable(i); err != nil {
 		return false, err
 	}
@@ -122,11 +123,12 @@ func (this *Action) Get(i interface{}) (bool, error) {
 	if len(this.Result) == 0 {
 		return false, nil
 	}
-	err := this.db.unmarshal(this.Result, i)
+	err = this.db.unmarshal(this.Result, i)
 	return true, err
 }
 
-func (this *Action) Find(i interface{}) error {
+func (this *Action) Find(i interface{}) (err error) {
+	defer this.dealErr(&err)
 	if err := this.setTable(i); err != nil {
 		return err
 	}
@@ -136,21 +138,22 @@ func (this *Action) Find(i interface{}) error {
 	return this.db.unmarshal(this.Result, i)
 }
 
-func (this *Action) Count(i ...interface{}) (int64, error) {
+func (this *Action) Count(i ...interface{}) (co int64, err error) {
+	defer this.dealErr(&err)
 	if err := this.setTable(i...); err != nil {
 		return 0, err
 	}
 	return this.count()
 }
 
-func (this *Action) FindAndCount(i interface{}) (int64, error) {
+func (this *Action) FindAndCount(i interface{}) (co int64, err error) {
+	defer this.dealErr(&err)
 	//设置表名,数据来源
 	if err := this.setTable(i); err != nil {
 		return 0, err
 	}
-
 	//统计数量
-	co, err := this.count()
+	co, err = this.count()
 	if err != nil {
 		return 0, err
 	}
@@ -163,29 +166,35 @@ func (this *Action) FindAndCount(i interface{}) (int64, error) {
 }
 
 // Insert 插入到数据库
-func (this *Action) Insert(i ...interface{}) error {
+func (this *Action) Insert(i ...interface{}) (err error) {
+	defer this.dealErr(&err)
 	//获取表名称
 	if err := this.setTable(i); err != nil {
 		return err
 	}
 	//整理字段结构
-	maps := []map[string]interface{}(nil)
-	for _, v := range i {
-		for _, vv := range conv.Interfaces(v) {
-			m := make(map[string]interface{})
-			if err := this.db.unmarshal(vv, &m); err != nil {
-				return err
+	return this.scanner.AppendWith(func(s *core.Scanner) ([][]byte, error) {
+		ls := [][]byte(nil)
+		for _, v := range i {
+			for _, vv := range conv.Interfaces(v) {
+				field := make(map[string]interface{})
+				if err := this.db.unmarshal(vv, &field); err != nil {
+					return nil, err
+				}
+				//设置自增主键
+				field[this.db.id] = this.db.getID()
+				//把主键赋值到原先的数据字段中,todo 是否有更好的方式?
+				fmt.Println(this.db.unmarshal(field, vv))
+				ls = append(ls, this.table.EncodeData(field, this.db.Split))
 			}
-			maps = append(maps, m)
 		}
-	}
-	if len(maps) == 0 {
-		return nil
-	}
-	return this.withAppend(maps...)
+		return ls, nil
+	})
 }
 
-func (this *Action) Update(i interface{}) error {
+func (this *Action) Update(i interface{}) (err error) {
+	defer this.dealErr(&err)
+
 	//获取表名称
 	if err := this.setTable(i); err != nil {
 		return err
@@ -245,6 +254,8 @@ func (this *Action) Update(i interface{}) error {
 }
 
 func (this *Action) Delete(i ...any) (err error) {
+	defer this.dealErr(&err)
+
 	//获取表名称
 	if err := this.setTable(i); err != nil {
 		return err
@@ -272,6 +283,16 @@ func (this *Action) Delete(i ...any) (err error) {
 
 
  */
+
+func (this *Action) dealErr(err *error) {
+	if err != nil && *err != nil {
+		switch {
+		case os.IsNotExist(*err):
+			//文件不存在,表示数据库的表不存在
+			*err = errors.New("表不存在")
+		}
+	}
+}
 
 // setTable 解析表名
 func (this *Action) setTable(i ...interface{}) error {
@@ -305,17 +326,6 @@ func (this *Action) setTable(i ...interface{}) error {
 		return ls, err
 	})
 	return nil
-}
-
-func (this *Action) withAppend(fields ...map[string]interface{}) (err error) {
-	return this.scanner.AppendWith(func(s *core.Scanner) ([][]byte, error) {
-		ls := [][]byte(nil)
-		for _, field := range fields {
-			field[this.db.id] = this.db.getID() //自增主键
-			ls = append(ls, this.table.EncodeData(field, this.db.Split))
-		}
-		return ls, nil
-	})
 }
 
 func (this *Action) withRead(fn func(f *os.File) error) error {
