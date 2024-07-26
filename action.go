@@ -298,7 +298,7 @@ func (this *Action) withAppend(fields ...map[string]interface{}) (err error) {
 	return this.scanner.AppendWith(func(s *core.Scanner) ([][]byte, error) {
 		ls := [][]byte(nil)
 		for _, field := range fields {
-			field["time"] = this.db.getID() //自增主键
+			field[this.db.id] = this.db.getID() //自增主键
 			ls = append(ls, this.table.EncodeData(field, this.db.Split))
 		}
 		return ls, nil
