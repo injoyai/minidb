@@ -157,29 +157,37 @@ func (this *DB) Sync(tables ...interface{}) error {
 	return nil
 }
 
+func (this *DB) NewAction() *Action {
+	return NewAction(this)
+}
+
 // Where Where("Name=?","小明")
 func (this *DB) Where(s string, args ...interface{}) *Action {
-	return NewAction(this).Where(s, args...)
+	return this.NewAction().Where(s, args...)
+}
+
+func (this *DB) Limit(size int, offset ...int) *Action {
+	return this.NewAction().Limit(size, offset...)
 }
 
 func (this *DB) Insert(i ...interface{}) error {
-	return NewAction(this).Insert(i...)
+	return this.NewAction().Insert(i...)
 }
 
 func (this *DB) Get(i interface{}) (bool, error) {
-	return NewAction(this).Get(i)
+	return this.NewAction().Get(i)
 }
 
 func (this *DB) Find(i interface{}) error {
-	return NewAction(this).Find(i)
+	return this.NewAction().Find(i)
 }
 
 func (this *DB) Count() (int64, error) {
-	return NewAction(this).Count()
+	return this.NewAction().Count()
 }
 
 func (this *DB) FindAndCount(i interface{}) (int64, error) {
-	return NewAction(this).FindAndCount(i)
+	return this.NewAction().FindAndCount(i)
 }
 
 /*
