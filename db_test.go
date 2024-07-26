@@ -105,6 +105,25 @@ func TestID(t *testing.T) {
 	}
 }
 
+func TestSplit(t *testing.T) {
+	db := New("./database", "testsplit",
+		WithSplit([]byte(" # ")),
+	)
+	db.Sync(new(Person))
+	db.Insert(Person{
+		ID:   101,
+		Name: "测试",
+		Age:  19,
+		High: 181.20,
+		Boy:  false,
+	})
+	ls := []*Person(nil)
+	db.FindAndCount(&ls)
+	for _, v := range ls {
+		t.Logf("%#v", v)
+	}
+}
+
 type Person struct {
 	ID   int     `orm:"time"`
 	Name string  `orm:"name"`
