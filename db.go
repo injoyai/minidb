@@ -96,6 +96,10 @@ func (this *DB) Sync(tables ...interface{}) error {
 		case reflect.Struct:
 			for i := 0; i < t.NumField(); i++ {
 				field := t.Field(i).Tag.Get(this.tag)
+				if field == "-" {
+					//用户主动忽略
+					continue
+				}
 				if len(field) == 0 {
 					field = t.Field(i).Name
 				}
