@@ -153,7 +153,7 @@ func (this *Action) Get(i interface{}) (has bool, err error) {
 	if len(this.Result) == 0 {
 		return false, nil
 	}
-	err = this.db.unmarshal(this.Result, i)
+	err = this.db.unmarshal(this.Result[0], i)
 	return true, err
 }
 
