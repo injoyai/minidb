@@ -24,11 +24,11 @@ Action
 type Action struct {
 	db *DB
 
-	Handler      []func(field map[string]*Field) (mate bool)          //筛选添加,例where and 暂未实现 or
-	LimitHandler func(index int, field map[string]string) (done bool) //对应操作Limit
-	SortHandler  func(i, j map[string]*Field) bool                    //对应操作Sort
-	Result       []interface{}                                        //对应Find和FindAndCount的数据缓存
-	Err          error                                                //操作的错误信息
+	Handler      []func(field map[string]*Field) (mate bool, err error) //筛选添加,例where and 暂未实现 or
+	LimitHandler func(index int, field map[string]string) (done bool)   //对应操作Limit
+	SortHandler  func(i, j map[string]*Field) bool                      //对应操作Sort
+	Result       []interface{}                                          //对应Find和FindAndCount的数据缓存
+	Err          error                                                  //操作的错误信息
 
 	TableName string     //要操作的表名
 	scanner   *core.File //文件操作
@@ -57,9 +57,12 @@ func (this *Action) Where(s string, args ...interface{}) *Action {
 						return this
 					}
 				}
-				this.Handler = append(this.Handler, func(field map[string]*Field) bool {
+				this.Handler = append(this.Handler, func(field map[string]*Field) (bool, error) {
 					val, ok := field[key]
-					return ok && val.compare(Type, value)
+					if !ok {
+						return false, fmt.Errorf("字段(%s)不存在", key)
+					}
+					return val.compare(Type, value), nil
 				})
 				break
 			}
@@ -90,13 +93,13 @@ func (this *Action) Cols(cols ...string) *Action {
 	if len(m) == 0 {
 		return this
 	}
-	this.Handler = append(this.Handler, func(field map[string]*Field) (next bool) {
+	this.Handler = append(this.Handler, func(field map[string]*Field) (next bool, err error) {
 		for k, _ := range field {
 			if !m[k] {
 				delete(field, k)
 			}
 		}
-		return true
+		return true, nil
 	})
 	return this
 }
@@ -249,8 +252,10 @@ func (this *Action) Update(i interface{}) (err error) {
 			original[k] = v.Value
 		}
 		for _, fn := range this.Handler {
-			if !fn(flied) {
-				//不符合的数据原路返回
+			if mate, err := fn(flied); err != nil {
+				return nil, err
+			} else if !mate {
+				//不符合的数据原路返回,不修改
 				return [][]byte{bs}, nil
 			}
 		}
@@ -298,7 +303,10 @@ func (this *Action) Delete(i ...any) (err error) {
 		del := true
 		flied := this.table.DecodeData2(bs, this.db.Split)
 		for _, fn := range this.Handler {
-			if !fn(flied) {
+			if mate, err := fn(flied); err != nil {
+				return false, err
+			} else if !mate {
+				//不匹配的数据不删除
 				del = false
 			}
 		}
@@ -393,7 +401,10 @@ func (this *Action) find() error {
 			t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) bool {
 				//数据筛选
 				for _, fn := range this.Handler {
-					if !fn(field) {
+					if mate, err := fn(field); err != nil {
+						return false
+					} else if !mate {
+						//不符合的数据不进行下一步处理
 						return true
 					}
 				}
