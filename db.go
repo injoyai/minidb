@@ -69,6 +69,10 @@ type DB struct {
 	mu       sync.Mutex
 }
 
+func (this *DB) ID() string {
+	return this.id
+}
+
 // Sync 同步表信息到数据库
 func (this *DB) Sync(tables ...interface{}) error {
 	for _, table := range tables {
@@ -255,7 +259,7 @@ func (this *DB) getID() int64 {
 	defer this.mu.Unlock()
 	for {
 		id := time.Now().UnixNano()
-		if id > this.lastID {
+		if id != this.lastID { //是否改成不等于最后的id
 			this.lastID = id
 			return id
 		}
@@ -455,7 +459,7 @@ func (this *Table) DecodeData2(data []byte, split []byte) map[string]*Field {
 	return mapField
 }
 
-func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int, field map[string]*Field) bool) {
+func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int, field map[string]*Field) (bool, error)) error {
 	mFieldIndex := this.Fields.MapIndex()
 	for index := 0; s.Scan(); index++ {
 		//数据整理
@@ -473,10 +477,13 @@ func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int,
 				}
 			}
 		}
-		if !fn(index, mapField) {
-			return
+		if mate, err := fn(index, mapField); err != nil {
+			return err
+		} else if !mate {
+			return nil
 		}
 	}
+	return nil
 }
 
 func (this *Table) EncodeData(field map[string]interface{}, split []byte) []byte {

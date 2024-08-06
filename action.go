@@ -398,14 +398,14 @@ func (this *Action) withData(scanner *bufio.Scanner, fn func(t *Table, s *bufio.
 func (this *Action) find() error {
 	return this.withRead(func(f *os.File) error {
 		return this.withData(bufio.NewScanner(f), func(t *Table, scanner *bufio.Scanner) error {
-			t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) bool {
+			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
 				//数据筛选
 				for _, fn := range this.Handler {
 					if mate, err := fn(field); err != nil {
-						return false
+						return false, err
 					} else if !mate {
 						//不符合的数据不进行下一步处理
-						return true
+						return true, nil
 					}
 				}
 				//数据分页
@@ -421,13 +421,12 @@ func (this *Action) find() error {
 				}
 
 				if this.LimitHandler(index, m) {
-					return false
+					return false, nil
 				}
 
-				return true
+				return true, nil
 			})
 
-			return nil
 		})
 	})
 }
