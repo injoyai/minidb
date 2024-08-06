@@ -26,6 +26,7 @@ type Action struct {
 
 	Handler      []func(field map[string]*Field) (mate bool)          //筛选添加,例where and 暂未实现 or
 	LimitHandler func(index int, field map[string]string) (done bool) //对应操作Limit
+	SortHandler  func(i, j map[string]*Field) bool                    //对应操作Sort
 	Result       []interface{}                                        //对应Find和FindAndCount的数据缓存
 	Err          error                                                //操作的错误信息
 
@@ -114,12 +115,41 @@ func (this *Action) Limit(size int, offset ...int) *Action {
 	return this
 }
 
+// Desc 倒序,未实现
+func (this *Action) Desc(filed string) *Action {
+	this.SortHandler = func(i, j map[string]*Field) bool {
+		f1 := i[filed]
+		f2 := j[filed]
+		if f1 == nil || f2 == nil {
+			return false
+		}
+		return f1.compare(">", f2.Value)
+	}
+	return this
+}
+
+// Asc 正序,取最小的字段,未实现
+func (this *Action) Asc(filed string) *Action {
+	this.SortHandler = func(i, j map[string]*Field) bool {
+		f1 := i[filed]
+		f2 := j[filed]
+		if f1 == nil || f2 == nil {
+			return false
+		}
+		return f1.compare("<", f2.Value)
+	}
+	return this
+}
+
 func (this *Action) Get(i interface{}) (has bool, err error) {
 	defer this.dealErr(&err)
 	if err := this.setTable(i); err != nil {
 		return false, err
 	}
 	this.Limit(1)
+	if err := this.find(); err != nil {
+		return false, err
+	}
 	if len(this.Result) == 0 {
 		return false, nil
 	}
@@ -211,7 +241,7 @@ func (this *Action) Update(i interface{}) (err error) {
 		return err
 	}
 
-	this.scanner.Update(func(i int, bs []byte) ([][]byte, error) {
+	return this.scanner.Update(func(i int, bs []byte) ([][]byte, error) {
 
 		flied := this.table.DecodeData2(bs, this.db.Split)
 		original := make(map[string]string)
@@ -249,8 +279,6 @@ func (this *Action) Update(i interface{}) (err error) {
 
 		return [][]byte{result}, nil
 	})
-
-	return nil
 }
 
 func (this *Action) Delete(i ...any) (err error) {
