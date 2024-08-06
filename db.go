@@ -135,7 +135,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 			return err
 		} else if err == nil {
 			//todo 后续加入同步字段
-			return nil
+			continue
 		}
 
 		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o666)
