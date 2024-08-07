@@ -217,7 +217,7 @@ func (this *Action) Insert(i ...interface{}) (err error) {
 				//设置自增主键
 				field[this.db.id] = this.db.getID()
 				//把主键赋值到原先的数据字段中,todo 是否有更好的方式?
-				fmt.Println(this.db.unmarshal(field, vv))
+				this.db.unmarshal(field, vv)
 				ls = append(ls, this.table.EncodeData(field, this.db.Split))
 			}
 		}
