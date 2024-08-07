@@ -336,6 +336,10 @@ func (this *Action) setTable(i ...interface{}) error {
 		return this.Err
 	}
 
+	if len(this.TableName) > 0 {
+		return nil
+	}
+
 	if len(i) == 0 {
 		return nil
 	}
