@@ -35,6 +35,9 @@ func WithSplit(split []byte) Option {
 type Option func(db *DB)
 
 func New(dir, database string, option ...Option) *DB {
+	if len(database) == 0 {
+		database = "default"
+	}
 	os.MkdirAll(filepath.Join(dir, database), os.ModePerm)
 	db := &DB{
 		Dir:      dir,
