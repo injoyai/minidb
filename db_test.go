@@ -152,3 +152,24 @@ type Person struct {
 	High float64 `orm:"high"`
 	Boy  bool    `orm:"boy"`
 }
+
+func TestCount(t *testing.T) {
+	db := New("./database", "testcount")
+	db.Sync(new(Person))
+	co, err := db.Count(&Person{})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if co == 0 {
+		db.Insert(&Person{Name: "A"}, &Person{Name: "B"}, &Person{Name: "C"}, &Person{Name: "D"})
+	}
+	data := []*Person(nil)
+	co, err = db.Where("name=A").Limit(2).FindAndCount(&data)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	t.Log(data)
+	t.Log(co)
+}

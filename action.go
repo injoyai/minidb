@@ -438,11 +438,21 @@ func (this *Action) find() error {
 func (this *Action) count() (int64, error) {
 	count := int64(0)
 	err := this.withRead(func(f *os.File) error {
-		return this.withData(bufio.NewScanner(f), func(t *Table, s *bufio.Scanner) error {
-			for i := 0; s.Scan(); i++ {
+		return this.withData(bufio.NewScanner(f), func(t *Table, scanner *bufio.Scanner) error {
+			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
+				//数据筛选
+				for _, fn := range this.Handler {
+					if mate, err := fn(field); err != nil {
+						return false, err
+					} else if !mate {
+						//不符合的数据不进行下一步处理
+						return true, nil
+					}
+				}
 				count++
-			}
-			return s.Err()
+				return true, nil
+			})
+
 		})
 	})
 	return count, err

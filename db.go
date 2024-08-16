@@ -172,6 +172,10 @@ func (this *DB) NewAction() *Action {
 	return NewAction(this)
 }
 
+func (this *DB) Table(table interface{}) *Action {
+	return this.NewAction().Table(table)
+}
+
 // Where Where("Name=?","小明")
 func (this *DB) Where(s string, args ...interface{}) *Action {
 	return this.NewAction().Where(s, args...)
@@ -193,8 +197,8 @@ func (this *DB) Find(i interface{}) error {
 	return this.NewAction().Find(i)
 }
 
-func (this *DB) Count() (int64, error) {
-	return this.NewAction().Count()
+func (this *DB) Count(i ...interface{}) (int64, error) {
+	return this.NewAction().Count(i...)
 }
 
 func (this *DB) FindAndCount(i interface{}) (int64, error) {
