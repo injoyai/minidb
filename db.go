@@ -371,7 +371,7 @@ func (this Fields) MapIndex() map[int]*Field {
 
 func (this *DB) DecodeTable(ls [][]byte) (*Table, error) {
 	if len(ls) != 12 {
-		return nil, errors.New("无效文件")
+		return nil, errors.New("数据损坏")
 	}
 	t := new(Table)
 	for i, bs := range ls {
