@@ -145,7 +145,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 			continue
 		}
 
-		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o666)
+		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
 			return err
 		}

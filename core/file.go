@@ -107,7 +107,7 @@ func (this *File) AppendWith(fn func(s *Scanner) ([][]byte, error)) error {
 	this.mu.Lock()
 	defer this.mu.Unlock()
 
-	f, err := os.OpenFile(this.Filename, os.O_APPEND, 0o666)
+	f, err := os.OpenFile(this.Filename, os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
 		return err
 	}
