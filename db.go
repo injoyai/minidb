@@ -141,7 +141,89 @@ func (this *DB) Sync(tables ...interface{}) error {
 		if err != nil && !os.IsNotExist(err) {
 			return err
 		} else if err == nil {
-			//todo 后续加入同步字段
+			//todo 后续整理同步字段的代码
+
+			//同步字段,按行扫描,并写入到缓存
+			//扫到字段那行时,进行字段增加操作
+			if err := func() (err error) {
+
+				defer func() {
+					if err == nil {
+						err = os.Rename(filename+".sync", filename)
+					}
+				}()
+
+				f, err := os.Open(filename)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				f2, err := os.OpenFile(filename+".sync", os.O_CREATE|os.O_WRONLY, 0666)
+				if err != nil {
+					return err
+				}
+				defer f2.Close()
+
+				mField := map[string]*Field{}
+				for _, field := range fields {
+					mField[field.Name] = field
+				}
+				mNeed := map[int]*Field{}
+
+				fn := func(s string, f2 *os.File, f func(f *Field) string) {
+					ls := []string(nil)
+					for fliedIndex, v := range strings.Split(s, string(this.Split)) {
+						if _, ok := mNeed[fliedIndex]; ok {
+							ls = append(ls, v)
+						}
+					}
+					for _, field := range mField {
+						ls = append(ls, f(field))
+					}
+					f2.Write([]byte(strings.Join(ls, string(this.Split)) + "\n"))
+				}
+
+				s := bufio.NewScanner(f)
+				for i := 0; s.Scan(); i++ {
+					switch i {
+					case 0, 1, 2, 7, 8, 9, 10, 11:
+
+						f2.Write([]byte(s.Text() + "\n"))
+
+					case 3:
+
+						//获取需要保留的下标
+						for fliedIndex, v := range strings.Split(s.Text(), string(this.Split)) {
+							if field, ok := mField[v]; ok {
+								mNeed[fliedIndex] = field
+								delete(mField, v)
+							}
+						}
+
+						fn(s.Text(), f2, func(f *Field) string { return f.Name })
+
+					case 4:
+
+						fn(s.Text(), f2, func(f *Field) string { return f.Type })
+
+					case 6:
+
+						fn(s.Text(), f2, func(f *Field) string { return f.Memo })
+
+					default:
+
+						fn(s.Text(), f2, func(f *Field) string { return "" })
+
+					}
+
+				}
+
+				return nil
+			}(); err != nil {
+				return err
+			}
+
 			continue
 		}
 
@@ -247,9 +329,27 @@ func (this *DB) tableName(table interface{}) (string, error) {
 		switch t.Kind() {
 		case reflect.Slice:
 			t = t.Elem()
+
 			for t.Kind() == reflect.Ptr {
 				t = t.Elem()
 			}
+
+			//尝试在这个类型的指针下面查找方法
+			if m := reflect.New(t).MethodByName("TableName"); m.IsValid() {
+				value := m.Call([]reflect.Value{})
+				if len(value) == 1 {
+					return value[0].String(), nil
+				}
+			}
+
+			//尝试在这个类型下面查找方法
+			if m := reflect.New(t).Elem().MethodByName("TableName"); m.IsValid() {
+				value := m.Call([]reflect.Value{})
+				if len(value) == 1 {
+					return value[0].String(), nil
+				}
+			}
+
 			return t.Name(), nil
 		}
 		return t.Name(), nil

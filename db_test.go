@@ -153,6 +153,19 @@ type Person struct {
 	Boy  bool    `orm:"boy"`
 }
 
+type Person2 struct {
+	ID     int     `orm:"time"`
+	Name   string  `orm:"name"`
+	Age    int     `orm:"age"`
+	High   float64 `orm:"high"`
+	Enable bool    `orm:"enable"`
+	Sex    int     `orm:"sex"`
+}
+
+func (this Person2) TableName() string {
+	return "Person"
+}
+
 func TestCount(t *testing.T) {
 	db := New("./database", "testcount")
 	db.Sync(new(Person))
@@ -172,4 +185,54 @@ func TestCount(t *testing.T) {
 	}
 	t.Log(data)
 	t.Log(co)
+}
+
+func TestSync(t *testing.T) {
+	db := New("./database", "testsync")
+	//if err := db.Sync(new(Person)); err != nil {
+	//	t.Error(err)
+	//	return
+	//}
+	if err := db.Insert(&Person{
+		Name: "A",
+		Age:  18,
+		High: 180.1,
+		Boy:  false,
+	}, &Person{
+		Name: "B",
+		Age:  17,
+		High: 170.03,
+		Boy:  true,
+	}, &Person{
+		Name: "C",
+		Age:  19,
+		High: 190.09,
+		Boy:  true,
+	}); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := db.Sync(new(Person2)); err != nil {
+		t.Error(err)
+		return
+	}
+	db.Insert(&Person2{
+		Name:   "new",
+		Age:    20,
+		High:   165.6,
+		Enable: true,
+		Sex:    2,
+	})
+
+	data := []*Person2(nil)
+	_, err := db.Limit(10).FindAndCount(&data)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	for _, v := range data {
+		t.Logf("%#v", v)
+	}
+
 }
