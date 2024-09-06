@@ -1,11 +1,11 @@
 package minidb
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
+	"github.com/injoyai/minidb/core"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -45,6 +45,7 @@ func New(dir, database string, option ...Option) *DB {
 		Split:    []byte{' ', 0xFF, ' '},
 		tag:      "orm",
 		id:       "time",
+		scanner:  core.NewFile("", 0),
 	}
 	for _, op := range option {
 		op(db)
@@ -70,6 +71,7 @@ type DB struct {
 	id       string
 	lastID   int64
 	mu       sync.Mutex
+	scanner  *core.File
 }
 
 func (this *DB) ID() string {
@@ -181,15 +183,17 @@ func (this *DB) Sync(tables ...interface{}) error {
 					for _, field := range mField {
 						ls = append(ls, f(field))
 					}
-					f2.Write([]byte(strings.Join(ls, string(this.Split)) + "\n"))
+					f2.Write([]byte(strings.Join(ls, string(this.Split))))
+					f2.Write(this.scanner.Split)
 				}
 
-				s := bufio.NewScanner(f)
+				s := this.scanner.NewScanner(f)
 				for i := 0; s.Scan(); i++ {
 					switch i {
 					case 0, 1, 2, 7, 8, 9, 10, 11:
 
-						f2.Write([]byte(s.Text() + "\n"))
+						f2.Write([]byte(s.Text()))
+						f2.Write(this.scanner.Split)
 
 					case 3:
 
@@ -233,18 +237,42 @@ func (this *DB) Sync(tables ...interface{}) error {
 		}
 
 		lsName, lsType, lsMemo := fields.List()
-		f.Write([]byte("start\n")) //第1行起始标识
-		f.Write([]byte("\n"))      //第2行预留
-		f.Write([]byte("\n"))      //第3行预留
-		f.Write([]byte(strings.Join(lsName, string(this.Split)) + "\n"))
-		f.Write([]byte(strings.Join(lsType, string(this.Split)) + "\n"))
-		f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.Split)) + "\n"))
-		f.Write([]byte(strings.Join(lsMemo, string(this.Split)) + "\n"))
-		f.Write([]byte("\n"))    //第8行预留
-		f.Write([]byte("\n"))    //第9行预留
-		f.Write([]byte("\n"))    //第10行预留
-		f.Write([]byte("\n"))    //第11行预留
-		f.Write([]byte("end\n")) //第12行结束标识
+		f.Write([]byte("start")) //第1行起始标识
+		f.Write(this.scanner.Split)
+
+		//f.Write([]byte{}) //第2行预留
+		f.Write(this.scanner.Split) //第2行预留
+
+		//f.Write([]byte{}) //第3行预留
+		f.Write(this.scanner.Split)
+
+		f.Write([]byte(strings.Join(lsName, string(this.Split))))
+		f.Write(this.scanner.Split)
+
+		f.Write([]byte(strings.Join(lsType, string(this.Split))))
+		f.Write(this.scanner.Split)
+
+		f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.Split))))
+		f.Write(this.scanner.Split)
+
+		f.Write([]byte(strings.Join(lsMemo, string(this.Split))))
+		f.Write(this.scanner.Split)
+
+		//f.Write([]byte("\n")) //第8行预留
+		f.Write(this.scanner.Split)
+
+		//f.Write([]byte("\n")) //第9行预留
+		f.Write(this.scanner.Split)
+
+		//f.Write([]byte("\n")) //第10行预留
+		f.Write(this.scanner.Split)
+
+		//f.Write([]byte("\n")) //第11行预留
+		f.Write(this.scanner.Split)
+
+		f.Write([]byte("end")) //第12行结束标识
+		f.Write(this.scanner.Split)
+
 		f.Close()
 	}
 	return nil
@@ -566,7 +594,7 @@ func (this *Table) DecodeData2(data []byte, split []byte) map[string]*Field {
 	return mapField
 }
 
-func (this *Table) DecodeData(s *bufio.Scanner, split []byte, fn func(index int, field map[string]*Field) (bool, error)) error {
+func (this *Table) DecodeData(s *core.Scanner, split []byte, fn func(index int, field map[string]*Field) (bool, error)) error {
 	mFieldIndex := this.Fields.MapIndex()
 	for index := 0; s.Scan(); index++ {
 		//数据整理

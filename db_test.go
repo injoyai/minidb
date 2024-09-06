@@ -236,3 +236,39 @@ func TestSync(t *testing.T) {
 	}
 
 }
+
+func TestLN(t *testing.T) {
+	db := New("./database", "testln")
+	db.Sync(new(Person))
+	t.Log(db.Insert(&Person{
+		ID: 0,
+		Name: `
+	function test(value){
+		//todo
+		return 0
+	}
+	`,
+		Age:  23,
+		High: 189.9,
+		Boy:  false,
+	}))
+	t.Log(db.Insert(&Person{
+		ID:   0,
+		Name: `名字`,
+		Age:  23,
+		High: 189.9,
+		Boy:  false,
+	}))
+	data := []*Person(nil)
+	co, err := db.FindAndCount(&data)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	t.Log(co)
+	for _, v := range data {
+		t.Logf("%#v", v)
+	}
+
+}

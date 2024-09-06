@@ -2,8 +2,8 @@ package core
 
 import (
 	"bufio"
-	"bytes"
 	"github.com/injoyai/conv"
+	"io"
 	"os"
 	"sync"
 )
@@ -12,36 +12,24 @@ func NewFile(filename string, writeCacheSize ...int) *File {
 	return &File{
 		Filename:       filename,
 		writeCacheSize: conv.DefaultInt(0, writeCacheSize...),
+		Split:          []byte{' ', 0xFF, '\n'},
 	}
 }
 
 type File struct {
-	Filename       string       //文件名称
-	writeCacheSize int          //缓存大小会大于等于设置的值,为0表示实时写入
-	mu             sync.RWMutex //锁
-	openFunc       func(s *Scanner) ([][]byte, error)
+	Filename       string                             //文件名称
+	writeCacheSize int                                //缓存大小会大于等于设置的值,为0表示实时写入
+	mu             sync.RWMutex                       //锁
+	OpenFunc       func(s *Scanner) ([][]byte, error) //
+	Split          []byte                             //每条数据的分隔符
+}
+
+func (this *File) NewScanner(r io.Reader) *Scanner {
+	return NewScanner(r, this.Split)
 }
 
 func (this *File) OnOpen(f func(s *Scanner) ([][]byte, error)) {
-	this.openFunc = f
-}
-
-func (this *File) split() []byte {
-	//预留,方便拓展其他分隔符
-	return []byte{'\n'}
-}
-
-func (this *File) escapeSplit() []byte {
-	//预留,方便拓展其他分隔符
-	return []byte(`\\n`)
-}
-
-func (this *File) escape(bs []byte) []byte {
-	return bytes.ReplaceAll(bs, this.split(), this.escapeSplit())
-}
-
-func (this *File) unescape(bs []byte) []byte {
-	return bytes.ReplaceAll(bs, this.escapeSplit(), this.split())
+	this.OpenFunc = f
 }
 
 func (this *File) Limit(fn func(i int, bs []byte) (any, bool), size int, offset ...int) ([]any, error) {
@@ -85,16 +73,13 @@ func (this *File) Range(fn func(i int, bs []byte) bool) error {
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
+	scanner := this.NewScanner(f)
 	for i := 0; scanner.Scan(); i++ {
-		if scanner.Err() != nil {
-			return scanner.Err()
-		}
-		if !fn(i, this.unescape(scanner.Bytes())) {
+		if !fn(i, scanner.Bytes()) {
 			break
 		}
 	}
-	return nil
+	return scanner.Err()
 }
 
 func (this *File) Append(p []byte) error {
@@ -113,10 +98,10 @@ func (this *File) AppendWith(fn func(s *Scanner) ([][]byte, error)) error {
 	}
 	defer f.Close()
 
-	scanner := NewScanner(f)
+	scanner := this.NewScanner(f)
 
-	if this.openFunc != nil {
-		_, err := this.openFunc(scanner)
+	if this.OpenFunc != nil {
+		_, err := this.OpenFunc(scanner)
 		if err != nil {
 			return err
 		}
@@ -132,7 +117,7 @@ func (this *File) AppendWith(fn func(s *Scanner) ([][]byte, error)) error {
 	}
 
 	for _, bs := range data {
-		p := append(this.escape(bs), this.split()...)
+		p := append(bs, this.Split...)
 		if _, err = f.Write(p); err != nil {
 			return err
 		}
@@ -180,11 +165,11 @@ func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) (err error
 	defer tempFile.Close()
 
 	writer := bufio.NewWriter(tempFile)
-	scanner := NewScanner(f)
+	scanner := this.NewScanner(f)
 
 	//打开事件
-	if this.openFunc != nil {
-		ls, err := this.openFunc(scanner)
+	if this.OpenFunc != nil {
+		ls, err := this.OpenFunc(scanner)
 		if err != nil {
 			return err
 		}
@@ -197,7 +182,7 @@ func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) (err error
 		if scanner.Err() != nil {
 			return scanner.Err()
 		}
-		replaces, err := fn(i, this.unescape(scanner.Bytes()))
+		replaces, err := fn(i, scanner.Bytes())
 		if err != nil {
 			return err
 		}
@@ -241,10 +226,10 @@ func (this *File) DelBy(fn func(i int, bs []byte) (del bool, err error)) (err er
 
 func (this *File) write(w *bufio.Writer, data ...[]byte) error {
 	for _, bs := range data {
-		if _, err := w.Write(this.escape(bs)); err != nil {
+		if _, err := w.Write(bs); err != nil {
 			return err
 		}
-		if _, err := w.Write(this.split()); err != nil {
+		if _, err := w.Write(this.Split); err != nil {
 			return err
 		}
 		if w.Size() >= this.writeCacheSize {

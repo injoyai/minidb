@@ -2,14 +2,28 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"github.com/injoyai/conv"
-	"os"
+	"io"
 )
 
-func NewScanner(f *os.File) *Scanner {
-	return &Scanner{
-		Scanner: bufio.NewScanner(f),
+func NewScanner(r io.Reader, split []byte) *Scanner {
+	s := &Scanner{
+		Scanner: bufio.NewScanner(r),
 	}
+	s.Scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if n := bytes.Index(data, split); n >= 0 {
+			return n + len(split), data[:n], nil
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+	return s
 }
 
 type Scanner struct {

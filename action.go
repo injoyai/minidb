@@ -1,7 +1,6 @@
 package minidb
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"github.com/injoyai/conv"
@@ -384,7 +383,7 @@ func (this *Action) withRead(fn func(f *os.File) error) error {
 	return nil
 }
 
-func (this *Action) withData(scanner *bufio.Scanner, fn func(t *Table, s *bufio.Scanner) error) error {
+func (this *Action) withData(scanner *core.Scanner, fn func(t *Table, s *core.Scanner) error) error {
 	infoList := [12][]byte{}
 	for i := 0; i < 12; i++ {
 		if !scanner.Scan() {
@@ -401,7 +400,7 @@ func (this *Action) withData(scanner *bufio.Scanner, fn func(t *Table, s *bufio.
 
 func (this *Action) find() error {
 	return this.withRead(func(f *os.File) error {
-		return this.withData(bufio.NewScanner(f), func(t *Table, scanner *bufio.Scanner) error {
+		return this.withData(this.scanner.NewScanner(f), func(t *Table, scanner *core.Scanner) error {
 			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
 				//数据筛选
 				for _, fn := range this.Handler {
@@ -438,7 +437,7 @@ func (this *Action) find() error {
 func (this *Action) count() (int64, error) {
 	count := int64(0)
 	err := this.withRead(func(f *os.File) error {
-		return this.withData(bufio.NewScanner(f), func(t *Table, scanner *bufio.Scanner) error {
+		return this.withData(this.scanner.NewScanner(f), func(t *Table, scanner *core.Scanner) error {
 			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
 				//数据筛选
 				for _, fn := range this.Handler {
