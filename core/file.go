@@ -32,11 +32,11 @@ func (this *File) OnOpen(f func(s *Scanner) ([][]byte, error)) {
 	this.OpenFunc = f
 }
 
-func (this *File) Limit(fn func(i int, bs []byte) (any, bool), size int, offset ...int) ([]any, error) {
+func (this *File) Limit(search func(i int, bs []byte) (any, bool), size int, offset ...int) ([]any, error) {
 	index := 0
 	result := []any(nil)
 	this.Range(func(i int, bs []byte) bool {
-		v, ok := fn(i, bs)
+		v, ok := search(i, bs)
 		if ok {
 			//附和预期的数据
 			index++

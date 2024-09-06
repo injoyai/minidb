@@ -174,16 +174,16 @@ func (this *DB) Sync(tables ...interface{}) error {
 				mNeed := map[int]*Field{}
 
 				fn := func(s string, f2 *os.File, f func(f *Field) string) {
-					ls := []string(nil)
-					for fliedIndex, v := range strings.Split(s, string(this.Split)) {
+					ls := [][]byte(nil)
+					for fliedIndex, v := range bytes.Split([]byte(s), this.Split) {
 						if _, ok := mNeed[fliedIndex]; ok {
 							ls = append(ls, v)
 						}
 					}
 					for _, field := range mField {
-						ls = append(ls, f(field))
+						ls = append(ls, []byte(f(field)))
 					}
-					f2.Write([]byte(strings.Join(ls, string(this.Split))))
+					f2.Write(bytes.Join(ls, this.Split))
 					f2.Write(this.scanner.Split)
 				}
 
@@ -192,7 +192,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 					switch i {
 					case 0, 1, 2, 7, 8, 9, 10, 11:
 
-						f2.Write([]byte(s.Text()))
+						f2.Write(s.Bytes())
 						f2.Write(this.scanner.Split)
 
 					case 3:
@@ -241,7 +241,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 		f.Write(this.scanner.Split)
 
 		//f.Write([]byte{}) //第2行预留
-		f.Write(this.scanner.Split) //第2行预留
+		f.Write(this.scanner.Split)
 
 		//f.Write([]byte{}) //第3行预留
 		f.Write(this.scanner.Split)
@@ -556,23 +556,6 @@ type Table struct {
 	Name   string //表名
 	Fields Fields //字段信息
 }
-
-//func (this *Table) Bytes() []byte {
-//	f := bytes.NewBuffer(nil)
-//	f.Write([]byte("start\n")) //第1行起始标识
-//	f.Write([]byte("\n"))      //第2行预留
-//	f.Write([]byte("\n"))      //第3行预留
-//	f.Write([]byte(strings.Join(lsName, string(this.Split)) + "\n"))
-//	f.Write([]byte(strings.Join(lsType, string(this.Split)) + "\n"))
-//	f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.Split)) + "\n"))
-//	f.Write([]byte(strings.Join(lsMemo, string(this.Split)) + "\n"))
-//	f.Write([]byte("\n"))    //第8行预留
-//	f.Write([]byte("\n"))    //第9行预留
-//	f.Write([]byte("\n"))    //第10行预留
-//	f.Write([]byte("\n"))    //第11行预留
-//	f.Write([]byte("end\n")) //第12行结束标识
-//	return f.Bytes()
-//}
 
 func (this *Table) DecodeData2(data []byte, split []byte) map[string]*Field {
 	mFieldIndex := this.Fields.MapIndex()
