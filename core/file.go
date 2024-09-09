@@ -117,23 +117,25 @@ func (this *File) Insert(index int, data []byte) error {
 }
 
 // Update 更新数据
-func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) error {
-	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) (err error) {
-		//临时文件名称
-		tempFilename := this.Filename + ".temp"
+func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) (err error) {
+	//临时文件名称
+	tempFilename := this.Filename + ".temp"
+	defer func() {
+		if err == nil {
+			//重命名临时文件到源文件
+			err = os.Rename(tempFilename, this.Filename)
+		}
+	}()
 
-		defer func() {
-			if err == nil {
-				//重命名临时文件到源文件
-				err = os.Rename(tempFilename, this.Filename)
-			}
-		}()
+	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) error {
+
 		//新建临时文件
 		tempFile, err := os.Create(tempFilename)
 		if err != nil {
 			return err
 		}
 		defer tempFile.Close()
+
 		writer := bufio.NewWriter(tempFile)
 		if err := this.write(writer, p...); err != nil {
 			return err
