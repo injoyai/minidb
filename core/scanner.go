@@ -3,7 +3,6 @@ package core
 import (
 	"bufio"
 	"bytes"
-	"github.com/injoyai/conv"
 	"io"
 )
 
@@ -31,16 +30,29 @@ type Scanner struct {
 	*bufio.Scanner
 }
 
+func (this *Scanner) Range(fn func(i int, bs []byte) (bool, error)) error {
+	for i := 0; this.Scanner.Scan(); i++ {
+		ok, err := fn(i, this.Scanner.Bytes())
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
+	}
+	return this.Err()
+}
+
 func (this *Scanner) LimitBytes(size int, offset ...int) ([][]byte, error) {
 	ls := [][]byte(nil)
-	_, err := this.Limit(size, conv.DefaultInt(0, offset...), func(i int, bs []byte) (any, bool) {
+	_, err := this.Limit(func(i int, bs []byte) (any, bool) {
 		ls = append(ls, bs)
 		return struct{}{}, true
-	})
+	}, size, offset...)
 	return ls, err
 }
 
-func (this *Scanner) Limit(size int, offset int, search func(i int, bs []byte) (any, bool)) ([]any, error) {
+func (this *Scanner) Limit(search func(i int, bs []byte) (any, bool), size int, offset ...int) ([]any, error) {
 
 	if search == nil {
 		search = func(i int, bs []byte) (any, bool) {
@@ -48,32 +60,32 @@ func (this *Scanner) Limit(size int, offset int, search func(i int, bs []byte) (
 		}
 	}
 
+	index := 0
 	var result []any
-	for index := 0; this.Scanner.Scan(); index++ {
-
-		//数据筛选,通过[]byte()重新声明内存,否则会复用scanner.token,造成数据混乱
-		v, ok := search(index, []byte(this.Scanner.Text()))
-		if !ok {
-			continue
-		}
-
-		//进行分页
-		if index < offset {
-			continue
-		}
-
-		switch {
-		case size < 0:
-			result = append(result, v)
-		case len(result) < size:
-			result = append(result, v)
-			if len(result) == size {
-				return result, nil
+	err := this.Range(func(i int, bs []byte) (bool, error) {
+		v, ok := search(i, bs)
+		if ok {
+			//附和预期的数据
+			index++
+			//进行分页
+			if len(offset) > 0 && index <= offset[0] {
+				return true, nil
 			}
-		default:
-			return result, nil
-		}
-	}
 
-	return result, nil
+			switch {
+			case size < 0:
+				result = append(result, v)
+			case len(result) < size:
+				result = append(result, v)
+				if len(result) == size {
+					return false, nil
+				}
+			default:
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+
+	return result, err
 }

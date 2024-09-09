@@ -28,104 +28,85 @@ func (this *File) NewScanner(r io.Reader) *Scanner {
 	return NewScanner(r, this.Split)
 }
 
-func (this *File) OnOpen(f func(s *Scanner) ([][]byte, error)) {
-	this.OpenFunc = f
-}
-
-func (this *File) Limit(search func(i int, bs []byte) (any, bool), size int, offset ...int) ([]any, error) {
-	index := 0
-	result := []any(nil)
-	this.Range(func(i int, bs []byte) bool {
-		v, ok := search(i, bs)
-		if ok {
-			//附和预期的数据
-			index++
-			//进行分页
-			if len(offset) > 0 && index <= offset[0] {
-				return true
-			}
-
-			switch {
-			case size < 0:
-				result = append(result, v)
-			case len(result) < size:
-				result = append(result, v)
-				if len(result) == size {
-					return false
-				}
-			default:
-				return false
-			}
-		}
-		return true
-	})
-	return result, nil
-}
-
-func (this *File) Range(fn func(i int, bs []byte) bool) error {
-
-	this.mu.RLock()
-	defer this.mu.RUnlock()
-
-	f, err := os.Open(this.Filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	scanner := this.NewScanner(f)
-	for i := 0; scanner.Scan(); i++ {
-		if !fn(i, scanner.Bytes()) {
-			break
-		}
-	}
-	return scanner.Err()
-}
-
-func (this *File) Append(p []byte) error {
-	return this.AppendWith(func(s *Scanner) ([][]byte, error) {
-		return [][]byte{p}, nil
-	})
-}
-
-func (this *File) AppendWith(fn func(s *Scanner) ([][]byte, error)) error {
+func (this *File) WithScanner(fn func(f *os.File, p [][]byte, s *Scanner) error) error {
 	this.mu.Lock()
 	defer this.mu.Unlock()
 
-	f, err := os.OpenFile(this.Filename, os.O_RDWR, 0o666)
+	file, err := os.OpenFile(this.Filename, os.O_RDWR, 0o666)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer file.Close()
 
-	scanner := this.NewScanner(f)
+	scanner := NewScanner(file, this.Split)
 
+	prefix := [][]byte(nil)
 	if this.OpenFunc != nil {
-		_, err := this.OpenFunc(scanner)
+		prefix, err = this.OpenFunc(scanner)
 		if err != nil {
 			return err
 		}
 	}
-
-	data, err := fn(scanner)
-	if err != nil {
-		return err
-	}
-
-	if _, err := f.Seek(0, 2); err != nil {
-		return err
-	}
-
-	for _, bs := range data {
-		p := append(bs, this.Split...)
-		if _, err = f.Write(p); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return fn(file, prefix, scanner)
 }
 
+func (this *File) OnOpen(f func(s *Scanner) ([][]byte, error)) {
+	this.OpenFunc = f
+}
+
+func (this *File) Limit(search func(i int, bs []byte) (any, bool), size int, offset ...int) (result []any, err error) {
+	err = this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) error {
+		result, err = s.Limit(search, size, offset...)
+		return err
+	})
+	return
+}
+
+// Range 遍历数据,不包括被消费(OnOpen)的数据
+func (this *File) Range(fn func(i int, bs []byte) bool) error {
+	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) error {
+		return s.Range(func(i int, bs []byte) (bool, error) {
+			return fn(i, bs), nil
+		})
+	})
+}
+
+// Append 追加数据,对应orm的Insert
+func (this *File) Append(data ...[]byte) error {
+	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) error {
+		if _, err := f.Seek(0, 2); err != nil {
+			return err
+		}
+		for _, bs := range data {
+			ls := append(bs, this.Split...)
+			if _, err := f.Write(ls); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (this *File) AppendWith(fn func() ([][]byte, error)) error {
+	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) error {
+		if _, err := f.Seek(0, 2); err != nil {
+			return err
+		}
+		data, err := fn()
+		if err != nil {
+			return err
+		}
+		for _, bs := range data {
+			ls := append(bs, this.Split...)
+			if _, err := f.Write(ls); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Insert 插入数据,其实就是更新数据,变成多条数据
 func (this *File) Insert(index int, data []byte) error {
 	return this.Update(func(i int, bs []byte) ([][]byte, error) {
 		if index != i {
@@ -135,82 +116,62 @@ func (this *File) Insert(index int, data []byte) error {
 	})
 }
 
-func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) (err error) {
-	//加锁,防止并发被覆盖
-	this.mu.Lock()
-	defer this.mu.Unlock()
+// Update 更新数据
+func (this *File) Update(fn func(i int, bs []byte) ([][]byte, error)) error {
+	return this.WithScanner(func(f *os.File, p [][]byte, s *Scanner) (err error) {
+		//临时文件名称
+		tempFilename := this.Filename + ".temp"
 
-	//临时文件名称
-	tempFilename := this.Filename + ".temp"
-
-	defer func() {
-		if err == nil {
-			//重命名临时文件到源文件
-			err = os.Rename(tempFilename, this.Filename)
-		}
-	}()
-
-	//打开源文件
-	f, err := os.Open(this.Filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	//新建临时文件
-	tempFile, err := os.Create(tempFilename)
-	if err != nil {
-		return err
-	}
-	defer tempFile.Close()
-
-	writer := bufio.NewWriter(tempFile)
-	scanner := this.NewScanner(f)
-
-	//打开事件
-	if this.OpenFunc != nil {
-		ls, err := this.OpenFunc(scanner)
+		defer func() {
+			if err == nil {
+				//重命名临时文件到源文件
+				err = os.Rename(tempFilename, this.Filename)
+			}
+		}()
+		//新建临时文件
+		tempFile, err := os.Create(tempFilename)
 		if err != nil {
 			return err
 		}
-		if err := this.write(writer, ls...); err != nil {
+		defer tempFile.Close()
+		writer := bufio.NewWriter(tempFile)
+		if err := this.write(writer, p...); err != nil {
 			return err
 		}
-	}
 
-	for i := 0; scanner.Scan(); i++ {
-		if scanner.Err() != nil {
-			return scanner.Err()
-		}
-		replaces, err := fn(i, scanner.Bytes())
+		err = s.Range(func(i int, bs []byte) (bool, error) {
+			replaces, err := fn(i, bs)
+			if err != nil {
+				return false, err
+			}
+			if replaces == nil {
+				return true, nil
+			}
+			if err := this.write(writer, replaces...); err != nil {
+				return false, err
+			}
+			return true, nil
+		})
 		if err != nil {
 			return err
 		}
-		if replaces == nil {
-			continue
-		}
-		if err := this.write(writer, replaces...); err != nil {
-			return err
-		}
-	}
 
-	//写入磁盘,减少写入次数
-	if err = writer.Flush(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (this *File) Del(index int) (err error) {
-	return this.Update(func(i int, bs []byte) ([][]byte, error) {
-		if index == i {
-			return nil, nil
-		}
-		return [][]byte{bs}, nil
+		//写入磁盘,减少写入次数
+		return writer.Flush()
 	})
 }
 
+// Del 按行数删除
+func (this *File) Del(index int) (err error) {
+	return this.DelBy(func(i int, bs []byte) (del bool, err error) {
+		if index == i {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+// DelBy 按条件删除
 func (this *File) DelBy(fn func(i int, bs []byte) (del bool, err error)) (err error) {
 	return this.Update(func(i int, bs []byte) ([][]byte, error) {
 		del, err := fn(i, bs)
@@ -224,6 +185,7 @@ func (this *File) DelBy(fn func(i int, bs []byte) (del bool, err error)) (err er
 	})
 }
 
+// write 写入数据,附带分隔符
 func (this *File) write(w *bufio.Writer, data ...[]byte) error {
 	for _, bs := range data {
 		if _, err := w.Write(bs); err != nil {

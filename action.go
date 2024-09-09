@@ -204,8 +204,9 @@ func (this *Action) Insert(i ...interface{}) (err error) {
 	if err := this.setTable(i); err != nil {
 		return err
 	}
+
 	//整理字段结构
-	return this.scanner.AppendWith(func(s *core.Scanner) ([][]byte, error) {
+	return this.scanner.AppendWith(func() ([][]byte, error) {
 		ls := [][]byte(nil)
 		for _, v := range i {
 			for _, vv := range conv.Interfaces(v) {
@@ -368,28 +369,16 @@ func (this *Action) setTable(i ...interface{}) error {
 }
 
 func (this *Action) withRead(fn func(f *os.File) error) error {
-	filename := this.db.filename(this.TableName)
-	f, err := os.Open(filename)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.New("表不存在: " + this.TableName)
-		}
-		return err
-	}
-	defer f.Close()
-	if fn != nil {
+	this.scanner.Filename = this.db.filename(this.TableName)
+	return this.scanner.WithScanner(func(f *os.File, p [][]byte, s *core.Scanner) error {
 		return fn(f)
-	}
-	return nil
+	})
 }
 
 func (this *Action) withData(scanner *core.Scanner, fn func(t *Table, s *core.Scanner) error) error {
-	infoList := [12][]byte{}
-	for i := 0; i < 12; i++ {
-		if !scanner.Scan() {
-			break
-		}
-		infoList[i] = []byte(scanner.Text())
+	infoList, err := scanner.LimitBytes(12)
+	if err != nil {
+		return err
 	}
 	table, err := this.db.DecodeTable(infoList[:])
 	if err != nil {
@@ -399,6 +388,40 @@ func (this *Action) withData(scanner *core.Scanner, fn func(t *Table, s *core.Sc
 }
 
 func (this *Action) find() error {
+	return this.scanner.WithScanner(func(f *os.File, p [][]byte, s *core.Scanner) error {
+		return this.table.DecodeData(s, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
+			//数据筛选
+			for _, fn := range this.Handler {
+				if mate, err := fn(field); err != nil {
+					return false, err
+				} else if !mate {
+					//不符合的数据不进行下一步处理
+					return true, nil
+				}
+			}
+			//数据分页
+			if this.LimitHandler == nil {
+				this.LimitHandler = func(index int, field map[string]string) bool {
+					this.Result = append(this.Result, field)
+					return false
+				}
+			}
+			m := make(map[string]string)
+			for k, v := range field {
+				m[k] = v.Value
+			}
+
+			if this.LimitHandler(index, m) {
+				return false, nil
+			}
+
+			return true, nil
+		})
+	})
+
+}
+
+func (this *Action) find2() error {
 	return this.withRead(func(f *os.File) error {
 		return this.withData(this.scanner.NewScanner(f), func(t *Table, scanner *core.Scanner) error {
 			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
@@ -436,22 +459,19 @@ func (this *Action) find() error {
 
 func (this *Action) count() (int64, error) {
 	count := int64(0)
-	err := this.withRead(func(f *os.File) error {
-		return this.withData(this.scanner.NewScanner(f), func(t *Table, scanner *core.Scanner) error {
-			return t.DecodeData(scanner, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
-				//数据筛选
-				for _, fn := range this.Handler {
-					if mate, err := fn(field); err != nil {
-						return false, err
-					} else if !mate {
-						//不符合的数据不进行下一步处理
-						return true, nil
-					}
+	err := this.scanner.WithScanner(func(f *os.File, p [][]byte, s *core.Scanner) error {
+		return this.table.DecodeData(s, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
+			//数据筛选
+			for _, fn := range this.Handler {
+				if mate, err := fn(field); err != nil {
+					return false, err
+				} else if !mate {
+					//不符合的数据不进行下一步处理
+					return true, nil
 				}
-				count++
-				return true, nil
-			})
-
+			}
+			count++
+			return true, nil
 		})
 	})
 	return count, err
