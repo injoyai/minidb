@@ -462,6 +462,8 @@ func (this *Field) compare(Type string, value interface{}) bool {
 		default:
 			return this.Value <= conv.String(value)
 		}
+	case "!=", "<>":
+		return this.Value != conv.String(value)
 	default:
 		return false
 	}
