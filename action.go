@@ -42,7 +42,7 @@ func (this *Action) Table(table interface{}) *Action {
 func (this *Action) Where(s string, args ...interface{}) *Action {
 	offset := 0
 	for _, v := range strings.Split(s, " and ") {
-		typeList := []string{" like ", "<>", ">=", ">", "<=", "<", "=", "!="}
+		typeList := []string{" like ", "<>", "!=", ">=", ">", "<=", "<", "="}
 		for _, Type := range typeList {
 			if ls := strings.SplitN(v, Type, 2); len(ls) == 2 {
 				key := strings.TrimSpace(ls[0])
