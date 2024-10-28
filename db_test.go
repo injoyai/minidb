@@ -5,7 +5,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	db := New("./database", "test")
+	db := New("./database/test")
 
 	t.Log("Sync")
 	if err := db.Sync(new(Person)); err != nil {
@@ -61,7 +61,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestDel(t *testing.T) {
-	db := New("./database", "test")
+	db := New("./database/test")
 	t.Log("Delete")
 	err := db.Where("time<=1721890649352277600").Delete(new(Person))
 	if err != nil {
@@ -71,7 +71,8 @@ func TestDel(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	db := New("./database", "test",
+	db := New(
+		"./database/test",
 		WithTag("orm"),
 	)
 	t.Log("Update")
@@ -87,7 +88,8 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestID(t *testing.T) {
-	db := New("./database", "testid",
+	db := New(
+		"./database/testid",
 		WithID("ID"),
 	)
 	db.Sync(new(Person))
@@ -106,7 +108,8 @@ func TestID(t *testing.T) {
 }
 
 func TestSplit(t *testing.T) {
-	db := New("./database", "testsplit",
+	db := New(
+		"./database/testsplit",
 		WithSplit([]byte(" # ")),
 	)
 	db.Sync(new(Person))
@@ -126,7 +129,7 @@ func TestSplit(t *testing.T) {
 
 // TestInsert 测试插入数据库后,主键是否被赋值
 func TestInsert(t *testing.T) {
-	db := New("./database", "testinsert")
+	db := New("./database/testinsert")
 	db.Sync(new(Person))
 	p := &Person{
 		ID:   0,
@@ -140,7 +143,7 @@ func TestInsert(t *testing.T) {
 }
 
 func TestErr(t *testing.T) {
-	db := New("./database", "testerr")
+	db := New("./database/testerr")
 	t.Log(db.Insert(nil))
 	t.Log(db.Insert(new(Person)))
 }
@@ -167,7 +170,7 @@ func (this Person2) TableName() string {
 }
 
 func TestCount(t *testing.T) {
-	db := New("./database", "testcount")
+	db := New("./database/testcount")
 	db.Sync(new(Person))
 	co, err := db.Count(&Person{})
 	if err != nil {
@@ -188,7 +191,7 @@ func TestCount(t *testing.T) {
 }
 
 func TestSync(t *testing.T) {
-	db := New("./database", "testsync")
+	db := New("./database/testsync")
 	//if err := db.Sync(new(Person)); err != nil {
 	//	t.Error(err)
 	//	return
@@ -238,7 +241,7 @@ func TestSync(t *testing.T) {
 }
 
 func TestLN(t *testing.T) {
-	db := New("./database", "testln")
+	db := New("./database/testln")
 	db.Sync(new(Person))
 	t.Log(db.Insert(&Person{
 		ID: 0,

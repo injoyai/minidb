@@ -218,7 +218,7 @@ func (this *Action) Insert(i ...interface{}) (err error) {
 				field[this.db.id] = this.db.getID()
 				//把主键赋值到原先的数据字段中,todo 是否有更好的方式?
 				this.db.unmarshal(field, vv)
-				ls = append(ls, this.table.EncodeData(field, this.db.Split))
+				ls = append(ls, this.table.EncodeData(field, this.db.split))
 			}
 		}
 		return ls, nil
@@ -246,7 +246,7 @@ func (this *Action) Update(i interface{}) (err error) {
 
 	return this.scanner.Update(func(i int, bs []byte) ([][]byte, error) {
 
-		flied := this.table.DecodeData2(bs, this.db.Split)
+		flied := this.table.DecodeData2(bs, this.db.split)
 		original := make(map[string]string)
 		for k, v := range flied {
 			original[k] = v.Value
@@ -280,7 +280,7 @@ func (this *Action) Update(i interface{}) (err error) {
 			}
 		}
 
-		result := this.table.EncodeData(m, this.db.Split)
+		result := this.table.EncodeData(m, this.db.split)
 
 		return [][]byte{result}, nil
 	})
@@ -301,7 +301,7 @@ func (this *Action) Delete(i ...any) (err error) {
 
 	return this.scanner.DelBy(func(i int, bs []byte) (bool, error) {
 		del := true
-		flied := this.table.DecodeData2(bs, this.db.Split)
+		flied := this.table.DecodeData2(bs, this.db.split)
 		for _, fn := range this.Handler {
 			if mate, err := fn(flied); err != nil {
 				return false, err
@@ -370,7 +370,7 @@ func (this *Action) setTable(i ...interface{}) error {
 
 func (this *Action) find() error {
 	return this.scanner.WithScanner(func(f *os.File, p [][]byte, s *core.Scanner) error {
-		return this.table.DecodeData(s, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
+		return this.table.DecodeData(s, this.db.split, func(index int, field map[string]*Field) (bool, error) {
 			//数据筛选
 			for _, fn := range this.Handler {
 				if mate, err := fn(field); err != nil {
@@ -405,7 +405,7 @@ func (this *Action) find() error {
 func (this *Action) count() (int64, error) {
 	count := int64(0)
 	err := this.scanner.WithScanner(func(f *os.File, p [][]byte, s *core.Scanner) error {
-		return this.table.DecodeData(s, this.db.Split, func(index int, field map[string]*Field) (bool, error) {
+		return this.table.DecodeData(s, this.db.split, func(index int, field map[string]*Field) (bool, error) {
 			//数据筛选
 			for _, fn := range this.Handler {
 				if mate, err := fn(field); err != nil {

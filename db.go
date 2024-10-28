@@ -28,28 +28,33 @@ func WithID(id string) Option {
 
 func WithSplit(split []byte) Option {
 	return func(db *DB) {
-		db.Split = split
+		db.split = split
+	}
+}
+
+func WithDir(dir string) Option {
+	return func(db *DB) {
+		db.dir = dir
 	}
 }
 
 type Option func(db *DB)
 
-func New(dir, database string, option ...Option) *DB {
-	if len(database) == 0 {
-		database = "default"
+func New(dir string, option ...Option) *DB {
+	if len(dir) == 0 {
+		dir = "./data/database/default"
 	}
-	os.MkdirAll(filepath.Join(dir, database), os.ModePerm)
 	db := &DB{
-		Dir:      dir,
-		Database: database,
-		Split:    []byte{' ', 0xFF, ' '},
-		tag:      "orm",
-		id:       "time",
-		scanner:  core.NewFile("", 0),
+		dir:     dir,
+		split:   []byte{' ', 0xFF, ' '},
+		tag:     "orm",
+		id:      "time",
+		scanner: core.NewFile("", 0),
 	}
 	for _, op := range option {
 		op(db)
 	}
+	os.MkdirAll(db.dir, os.ModePerm)
 	return db
 }
 
@@ -64,14 +69,13 @@ DB
 第13行值: 	1 , 小明 , 18 , 180.2 , true
 */
 type DB struct {
-	Dir      string
-	Database string
-	Split    []byte
-	tag      string
-	id       string
-	lastID   int64
-	mu       sync.Mutex
-	scanner  *core.File
+	dir     string
+	split   []byte
+	tag     string
+	id      string
+	lastID  int64
+	mu      sync.Mutex
+	scanner *core.File
 }
 
 func (this *DB) ID() string {
@@ -175,7 +179,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 
 				fn := func(s string, f2 *os.File, f func(f *Field) string) {
 					ls := [][]byte(nil)
-					for fliedIndex, v := range bytes.Split([]byte(s), this.Split) {
+					for fliedIndex, v := range bytes.Split([]byte(s), this.split) {
 						if _, ok := mNeed[fliedIndex]; ok {
 							ls = append(ls, v)
 						}
@@ -183,7 +187,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 					for _, field := range mField {
 						ls = append(ls, []byte(f(field)))
 					}
-					f2.Write(bytes.Join(ls, this.Split))
+					f2.Write(bytes.Join(ls, this.split))
 					f2.Write(this.scanner.Split)
 				}
 
@@ -198,7 +202,7 @@ func (this *DB) Sync(tables ...interface{}) error {
 					case 3:
 
 						//获取需要保留的下标
-						for fliedIndex, v := range strings.Split(s.Text(), string(this.Split)) {
+						for fliedIndex, v := range strings.Split(s.Text(), string(this.split)) {
 							if field, ok := mField[v]; ok {
 								mNeed[fliedIndex] = field
 								delete(mField, v)
@@ -246,16 +250,16 @@ func (this *DB) Sync(tables ...interface{}) error {
 		//f.Write([]byte{}) //第3行预留
 		f.Write(this.scanner.Split)
 
-		f.Write([]byte(strings.Join(lsName, string(this.Split))))
+		f.Write([]byte(strings.Join(lsName, string(this.split))))
 		f.Write(this.scanner.Split)
 
-		f.Write([]byte(strings.Join(lsType, string(this.Split))))
+		f.Write([]byte(strings.Join(lsType, string(this.split))))
 		f.Write(this.scanner.Split)
 
-		f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.Split))))
+		f.Write([]byte(strings.Join(make([]string, len(lsName)), string(this.split))))
 		f.Write(this.scanner.Split)
 
-		f.Write([]byte(strings.Join(lsMemo, string(this.Split))))
+		f.Write([]byte(strings.Join(lsMemo, string(this.split))))
 		f.Write(this.scanner.Split)
 
 		//f.Write([]byte("\n")) //第8行预留
@@ -385,7 +389,7 @@ func (this *DB) tableName(table interface{}) (string, error) {
 }
 
 func (this *DB) filename(tableName string) string {
-	return filepath.Join(this.Dir, this.Database, tableName+".mini")
+	return filepath.Join(this.dir, tableName+".mini")
 }
 
 // getID 修改时间可能会有问题,主键变小了,后续改成记录最后的id,然后增加
@@ -514,7 +518,7 @@ func (this *DB) DecodeTable(ls [][]byte) (*Table, error) {
 			//预留,编码,等配置信息
 		case 3:
 			//字段名称
-			for index, item := range bytes.Split(bs, this.Split) {
+			for index, item := range bytes.Split(bs, this.split) {
 				t.Fields = append(t.Fields, &Field{
 					Index: index,
 					Name:  string(item),
@@ -524,21 +528,21 @@ func (this *DB) DecodeTable(ls [][]byte) (*Table, error) {
 			}
 		case 4:
 			//字段类型
-			for index, item := range bytes.Split(bs, this.Split) {
+			for index, item := range bytes.Split(bs, this.split) {
 				if index < len(t.Fields) {
 					t.Fields[index].Type = string(item)
 				}
 			}
 		case 5:
 			//字段序号
-			for index, item := range bytes.Split(bs, this.Split) {
+			for index, item := range bytes.Split(bs, this.split) {
 				if index < len(t.Fields) {
 					t.Fields[index].Sort = conv.Int(string(item))
 				}
 			}
 		case 6:
 			//字段备注
-			for index, item := range bytes.Split(bs, this.Split) {
+			for index, item := range bytes.Split(bs, this.split) {
 				if index < len(t.Fields) {
 					t.Fields[index].Memo = string(item)
 				}
