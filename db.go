@@ -42,7 +42,7 @@ type Option func(db *DB)
 
 func New(dir string, option ...Option) *DB {
 	if len(dir) == 0 {
-		dir = "./data/database/default"
+		dir = "./data/database"
 	}
 	db := &DB{
 		dir:     dir,
