@@ -11,7 +11,7 @@ import (
 func NewFile(filename string, writeCacheSize ...int) *File {
 	return &File{
 		Filename:       filename,
-		writeCacheSize: conv.DefaultInt(0, writeCacheSize...),
+		writeCacheSize: conv.Default(0, writeCacheSize...),
 		Split:          []byte{' ', 0xFF, '\n'},
 	}
 }

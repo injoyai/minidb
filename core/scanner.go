@@ -20,7 +20,7 @@ func NewScanner(r io.Reader, split []byte) *Scanner {
 		if atEOF {
 			return len(data), data, nil
 		}
-		return 0, nil, nil
+		return len(data), nil, nil
 	})
 	return s
 }

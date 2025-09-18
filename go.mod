@@ -2,7 +2,7 @@ module github.com/injoyai/minidb
 
 go 1.18
 
-require github.com/injoyai/conv v1.1.10
+require github.com/injoyai/conv v1.2.5
 
 require (
 	github.com/json-iterator/go v1.1.12 // indirect
